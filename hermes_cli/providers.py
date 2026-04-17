@@ -316,7 +316,7 @@ def get_provider(name: str) -> Optional[ProviderDef]:
     Resolution order:
       1. Hermes overlays (for providers not in models.dev: nous, openai-codex, etc.)
       2. models.dev catalog + Hermes overlay
-      3. User-defined providers from config (TODO: Phase 4)
+      3. User-defined providers from config
 
     Returns a fully-resolved ProviderDef or None.
     """

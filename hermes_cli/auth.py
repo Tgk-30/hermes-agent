@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 import yaml
 
-from hermes_cli.config import get_hermes_home, get_config_path, read_raw_config
+from hermes_cli.config import get_hermes_home, get_config_path, read_raw_config, get_env_value
 from hermes_constants import OPENROUTER_BASE_URL
 
 logger = logging.getLogger(__name__)
@@ -396,7 +396,7 @@ def _resolve_api_key_provider_secret(
         return "", ""
 
     for env_var in pconfig.api_key_env_vars:
-        val = os.getenv(env_var, "").strip()
+        val = (get_env_value(env_var) or "").strip()
         if has_usable_secret(val):
             return val, env_var
 
@@ -2498,7 +2498,7 @@ def get_api_key_provider_status(provider_id: str) -> Dict[str, Any]:
 
     env_url = ""
     if pconfig.base_url_env_var:
-        env_url = os.getenv(pconfig.base_url_env_var, "").strip()
+        env_url = (get_env_value(pconfig.base_url_env_var) or "").strip()
 
     if provider_id in ("kimi-coding", "kimi-coding-cn"):
         base_url = _resolve_kimi_base_url(api_key, pconfig.inference_base_url, env_url)
@@ -2593,7 +2593,7 @@ def resolve_api_key_provider_credentials(provider_id: str) -> Dict[str, Any]:
 
     env_url = ""
     if pconfig.base_url_env_var:
-        env_url = os.getenv(pconfig.base_url_env_var, "").strip()
+        env_url = (get_env_value(pconfig.base_url_env_var) or "").strip()
 
     if provider_id in ("kimi-coding", "kimi-coding-cn"):
         base_url = _resolve_kimi_base_url(api_key, pconfig.inference_base_url, env_url)

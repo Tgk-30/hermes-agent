@@ -173,7 +173,7 @@ class IterationBudget:
     Each agent (parent or subagent) gets its own ``IterationBudget``.
     The parent's budget is capped at ``max_iterations`` (default 90).
     Each subagent gets an independent budget capped at
-    ``delegation.max_iterations`` (default 50) — this means total
+    ``delegation.max_iterations`` (default 1000) — this means total
     iterations across parent + subagents can exceed the parent's cap.
     Users control the per-subagent limit via ``delegation.max_iterations``
     in config.yaml.

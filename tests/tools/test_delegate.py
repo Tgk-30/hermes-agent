@@ -17,9 +17,12 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tools.delegate_tool import (
     DELEGATE_BLOCKED_TOOLS,
     DELEGATE_TASK_SCHEMA,
+    DEFAULT_MAX_ITERATIONS,
     _get_max_concurrent_children,
     MAX_DEPTH,
     check_delegate_requirements,
@@ -30,6 +33,12 @@ from tools.delegate_tool import (
     _resolve_child_credential_pool,
     _resolve_delegation_credentials,
 )
+from tools.registry import registry
+
+
+@pytest.fixture(autouse=True)
+def _isolate_delegate_config(monkeypatch):
+    monkeypatch.setattr("tools.delegate_tool._load_config", lambda: {}, raising=False)
 
 
 def _make_mock_parent(depth=0):
@@ -64,6 +73,7 @@ class TestDelegateRequirements(unittest.TestCase):
         props = DELEGATE_TASK_SCHEMA["parameters"]["properties"]
         self.assertIn("goal", props)
         self.assertIn("tasks", props)
+        self.assertIn("model", props)
         self.assertIn("context", props)
         self.assertIn("toolsets", props)
         self.assertIn("max_iterations", props)
@@ -565,7 +575,8 @@ class TestBlockedTools(unittest.TestCase):
             self.assertIn(tool, DELEGATE_BLOCKED_TOOLS)
 
     def test_constants(self):
-        self.assertEqual(_get_max_concurrent_children(), 3)
+        self.assertEqual(_get_max_concurrent_children(), 100)
+        self.assertEqual(DEFAULT_MAX_ITERATIONS, 1000)
         self.assertEqual(MAX_DEPTH, 2)
 
 
@@ -710,6 +721,47 @@ class TestDelegationCredentialResolution(unittest.TestCase):
 
 class TestDelegationProviderIntegration(unittest.TestCase):
     """Integration tests: delegation config → _run_single_child → AIAgent construction."""
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("tools.delegate_tool._resolve_delegation_credentials")
+    def test_registry_handler_forwards_per_call_model_override(self, mock_creds, mock_cfg):
+        """Registered tool handler should honor per-call model/provider overrides."""
+        mock_cfg.return_value = {"max_iterations": 45, "model": "", "provider": ""}
+
+        def _fake_resolve(cfg, _parent):
+            self.assertEqual(cfg["model"], "MiniMax-M2.7")
+            self.assertEqual(cfg["provider"], "minimax")
+            return {
+                "model": "MiniMax-M2.7",
+                "provider": "minimax",
+                "base_url": "https://api.minimax.chat/v1",
+                "api_key": "minimax-key",
+                "api_mode": "chat_completions",
+            }
+
+        mock_creds.side_effect = _fake_resolve
+        parent = _make_mock_parent(depth=0)
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+
+            result = json.loads(registry.dispatch(
+                "delegate_task",
+                {
+                    "goal": "Test per-call override",
+                    "model": {"provider": "minimax", "model": "MiniMax-M2.7"},
+                },
+                parent_agent=parent,
+            ))
+
+            self.assertEqual(result["results"][0]["status"], "completed")
+            _, kwargs = MockAgent.call_args
+            self.assertEqual(kwargs["model"], "MiniMax-M2.7")
+            self.assertEqual(kwargs["provider"], "minimax")
 
     @patch("tools.delegate_tool._load_config")
     @patch("tools.delegate_tool._resolve_delegation_credentials")

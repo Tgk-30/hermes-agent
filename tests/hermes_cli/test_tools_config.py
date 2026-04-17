@@ -121,6 +121,24 @@ def test_get_platform_tools_no_mcp_sentinel_does_not_affect_other_platforms():
     assert "exa" in cli_enabled
 
 
+def test_get_platform_tools_no_mcp_excludes_disabled_mcp_server_names_too():
+    """The no_mcp sentinel must filter every configured MCP server name, not
+    just the globally enabled subset.
+    """
+    config = {
+        "platform_toolsets": {"cli": ["web", "disabled-server", "no_mcp"]},
+        "mcp_servers": {
+            "disabled-server": {"url": "https://example.com/mcp", "enabled": False},
+        },
+    }
+
+    enabled = _get_platform_tools(config, "cli")
+
+    assert "web" in enabled
+    assert "disabled-server" not in enabled
+    assert "no_mcp" not in enabled
+
+
 def test_toolset_has_keys_for_vision_accepts_codex_auth(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     (tmp_path / "auth.json").write_text(

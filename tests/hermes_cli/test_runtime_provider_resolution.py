@@ -197,6 +197,61 @@ def test_resolve_runtime_provider_uses_qwen_pool_entry(monkeypatch):
     assert resolved["source"] == "manual:qwen_cli"
 
 
+def test_resolve_runtime_provider_copilot_defaults_base_url_when_credentials_omit_it(monkeypatch):
+    class _Pool:
+        def has_credentials(self):
+            return False
+
+    monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "copilot")
+    monkeypatch.setattr(rp, "_get_model_config", lambda: {"provider": "copilot"})
+    monkeypatch.setattr(rp, "load_pool", lambda provider: _Pool())
+    monkeypatch.setattr(
+        rp,
+        "resolve_api_key_provider_credentials",
+        lambda provider: {
+            "provider": provider,
+            "api_key": "copilot-token",
+            "base_url": "",
+            "source": "gh auth token",
+        },
+    )
+    monkeypatch.setattr(rp, "_copilot_runtime_api_mode", lambda *args, **kwargs: "chat_completions")
+    monkeypatch.delenv("COPILOT_API_BASE_URL", raising=False)
+
+    resolved = rp.resolve_runtime_provider(requested="copilot")
+
+    assert resolved["provider"] == "copilot"
+    assert resolved["api_key"] == "copilot-token"
+    assert resolved["base_url"] == rp.PROVIDER_REGISTRY["copilot"].inference_base_url
+    assert resolved["source"] == "gh auth token"
+
+
+def test_resolve_runtime_provider_copilot_pool_entry_defaults_base_url_when_missing(monkeypatch):
+    class _Entry:
+        access_token = "pool-copilot-token"
+        source = "manual"
+        base_url = ""
+
+    class _Pool:
+        def has_credentials(self):
+            return True
+
+        def select(self):
+            return _Entry()
+
+    monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "copilot")
+    monkeypatch.setattr(rp, "_get_model_config", lambda: {"provider": "copilot"})
+    monkeypatch.setattr(rp, "load_pool", lambda provider: _Pool())
+    monkeypatch.setattr(rp, "_copilot_runtime_api_mode", lambda *args, **kwargs: "chat_completions")
+
+    resolved = rp.resolve_runtime_provider(requested="copilot")
+
+    assert resolved["provider"] == "copilot"
+    assert resolved["api_key"] == "pool-copilot-token"
+    assert resolved["base_url"] == rp.PROVIDER_REGISTRY["copilot"].inference_base_url
+    assert resolved["source"] == "manual"
+
+
 def test_resolve_provider_alias_qwen(monkeypatch):
     monkeypatch.setattr(rp.auth_mod, "_load_auth_store", lambda: {})
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

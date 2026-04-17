@@ -433,6 +433,20 @@ class TestResolveApiKeyProviderCredentials:
         assert creds["api_key"] == "mm-secret-key"
         assert creds["base_url"] == "https://api.minimax.io/anthropic"
 
+    def test_resolve_minimax_from_hermes_dotenv(self, monkeypatch, tmp_path):
+        hermes_home = tmp_path / ".hermes"
+        hermes_home.mkdir()
+        (hermes_home / ".env").write_text("MINIMAX_API_KEY=dotenv-mm-key\n", encoding="utf-8")
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+
+        creds = resolve_api_key_provider_credentials("minimax")
+
+        assert creds["provider"] == "minimax"
+        assert creds["api_key"] == "dotenv-mm-key"
+        assert creds["source"] == "MINIMAX_API_KEY"
+        assert creds["base_url"] == "https://api.minimax.io/anthropic"
+
     def test_resolve_minimax_cn_with_key(self, monkeypatch):
         monkeypatch.setenv("MINIMAX_CN_API_KEY", "mmcn-secret-key")
         creds = resolve_api_key_provider_credentials("minimax-cn")

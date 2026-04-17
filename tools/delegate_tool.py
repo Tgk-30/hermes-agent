@@ -49,13 +49,13 @@ _SUBAGENT_TOOLSETS = sorted(
 )
 _TOOLSET_LIST_STR = ", ".join(f"'{n}'" for n in _SUBAGENT_TOOLSETS)
 
-_DEFAULT_MAX_CONCURRENT_CHILDREN = 3
+_DEFAULT_MAX_CONCURRENT_CHILDREN = 100
 MAX_DEPTH = 2  # parent (0) -> child (1) -> grandchild rejected (2)
 
 
 def _get_max_concurrent_children() -> int:
     """Read delegation.max_concurrent_children from config, falling back to
-    DELEGATION_MAX_CONCURRENT_CHILDREN env var, then the default (3).
+    DELEGATION_MAX_CONCURRENT_CHILDREN env var, then the default (100).
 
     Uses the same ``_load_config()`` path that the rest of ``delegate_task``
     uses, keeping config priority consistent (config.yaml > env > default).
@@ -77,7 +77,7 @@ def _get_max_concurrent_children() -> int:
         except (TypeError, ValueError):
             pass
     return _DEFAULT_MAX_CONCURRENT_CHILDREN
-DEFAULT_MAX_ITERATIONS = 50
+DEFAULT_MAX_ITERATIONS = 1000
 _HEARTBEAT_INTERVAL = 30  # seconds between parent activity heartbeats during delegation
 DEFAULT_TOOLSETS = ["terminal", "file", "web"]
 
@@ -301,7 +301,7 @@ def _build_child_agent(
     child_progress_cb = _build_child_progress_callback(task_index, parent_agent)
 
     # Each subagent gets its own iteration budget capped at max_iterations
-    # (configurable via delegation.max_iterations, default 50).  This means
+    # (configurable via delegation.max_iterations, default 1000).  This means
     # total iterations across parent + subagents can exceed the parent's
     # max_iterations.  The user controls the per-subagent cap in config.yaml.
 
@@ -626,6 +626,7 @@ def delegate_task(
     toolsets: Optional[List[str]] = None,
     tasks: Optional[List[Dict[str, Any]]] = None,
     max_iterations: Optional[int] = None,
+    model: Optional[Dict[str, str]] = None,
     acp_command: Optional[str] = None,
     acp_args: Optional[List[str]] = None,
     parent_agent=None,
@@ -653,7 +654,16 @@ def delegate_task(
         })
 
     # Load config
-    cfg = _load_config()
+    cfg = dict(_load_config() or {})
+    if model is not None:
+        if not isinstance(model, dict):
+            return tool_error("'model' must be an object with a required 'model' string and optional 'provider'.")
+        model_name = str(model.get("model") or "").strip()
+        if not model_name:
+            return tool_error("'model.model' is required when passing a delegate_task model override.")
+        cfg["model"] = model_name
+        if "provider" in model:
+            cfg["provider"] = str(model.get("provider") or "").strip()
     default_max_iter = cfg.get("max_iterations", DEFAULT_MAX_ITERATIONS)
     effective_max_iter = max_iterations or default_max_iter
 
@@ -1010,7 +1020,7 @@ DELEGATE_TASK_SCHEMA = {
         "never enter your context window.\n\n"
         "TWO MODES (one of 'goal' or 'tasks' is required):\n"
         "1. Single task: provide 'goal' (+ optional context, toolsets)\n"
-        "2. Batch (parallel): provide 'tasks' array with up to 3 items. "
+        "2. Batch (parallel): provide 'tasks' array. "
         "All run concurrently and results are returned together.\n\n"
         "WHEN TO USE delegate_task:\n"
         "- Reasoning-heavy subtasks (debugging, code review, research synthesis)\n"
@@ -1059,6 +1069,21 @@ DELEGATE_TASK_SCHEMA = {
                     "['terminal', 'file', 'web'] for full-stack tasks."
                 ),
             },
+            "model": {
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "description": "Optional provider override for this delegate_task call (e.g. 'minimax', 'openrouter'). If omitted, inherits config/parent provider behavior.",
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model name for this delegate_task call (e.g. 'MiniMax-M2.7'). Required when passing the model override object.",
+                    },
+                },
+                "required": ["model"],
+                "description": "Optional per-call provider/model override for all child agents spawned by this delegate_task invocation. Overrides delegation.provider/delegation.model from config for this call only.",
+            },
             "tasks": {
                 "type": "array",
                 "items": {
@@ -1084,10 +1109,10 @@ DELEGATE_TASK_SCHEMA = {
                     "required": ["goal"],
                 },
                 # No maxItems — the runtime limit is configurable via
-                # delegation.max_concurrent_children (default 3) and
+                # delegation.max_concurrent_children (default 100) and
                 # enforced with a clear error in delegate_task().
                 "description": (
-                    "Batch mode: tasks to run in parallel (limit configurable via delegation.max_concurrent_children, default 3). Each gets "
+                    "Batch mode: tasks to run in parallel (limit configurable via delegation.max_concurrent_children, default 100). Each gets "
                     "its own subagent with isolated context and terminal session. "
                     "When provided, top-level goal/context/toolsets are ignored."
                 ),
@@ -1095,7 +1120,7 @@ DELEGATE_TASK_SCHEMA = {
             "max_iterations": {
                 "type": "integer",
                 "description": (
-                    "Max tool-calling turns per subagent (default: 50). "
+                    "Max tool-calling turns per subagent (default: 1000). "
                     "Only set lower for simple tasks."
                 ),
             },
@@ -1135,6 +1160,7 @@ registry.register(
         toolsets=args.get("toolsets"),
         tasks=args.get("tasks"),
         max_iterations=args.get("max_iterations"),
+        model=args.get("model"),
         acp_command=args.get("acp_command"),
         acp_args=args.get("acp_args"),
         parent_agent=kw.get("parent_agent")),
