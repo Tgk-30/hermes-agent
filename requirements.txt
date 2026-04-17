@@ -11,10 +11,10 @@ rich
 tenacity
 prompt_toolkit
 pyyaml
-requests
+requests>=2.33.0,<3
 jinja2
 pydantic>=2.0
-PyJWT[crypto]
+PyJWT[crypto]>=2.12.0,<3
 debugpy
 
 # Web tools
