@@ -134,14 +134,20 @@ PROVIDER_ENV_VARS = (
     "NOUS_API_KEY", "GITHUB_TOKEN", "GH_TOKEN",
     "OPENAI_BASE_URL", "HERMES_COPILOT_ACP_COMMAND", "COPILOT_CLI_PATH",
     "HERMES_COPILOT_ACP_ARGS", "COPILOT_ACP_BASE_URL",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION",
 )
 
 
 @pytest.fixture(autouse=True)
 def _clear_provider_env(monkeypatch):
+    for pconfig in PROVIDER_REGISTRY.values():
+        for key in pconfig.api_key_env_vars:
+            monkeypatch.delenv(key, raising=False)
     for key in PROVIDER_ENV_VARS:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr("hermes_cli.auth._load_auth_store", lambda: {})
+    monkeypatch.setattr("agent.bedrock_adapter.has_aws_credentials", lambda: False)
 
 
 class TestResolveProvider:

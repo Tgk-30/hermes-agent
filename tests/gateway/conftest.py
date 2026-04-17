@@ -40,6 +40,8 @@ def _ensure_telegram_mock() -> None:
     mod.constants.ChatType.GROUP = "group"
     mod.constants.ChatType.SUPERGROUP = "supergroup"
     mod.constants.ChatType.CHANNEL = "channel"
+    mod.ChatType = mod.constants.ChatType
+    mod.ParseMode = mod.constants.ParseMode
 
     # Real exception classes so ``except (NetworkError, ...)`` clauses
     # in production code don't blow up with TypeError.

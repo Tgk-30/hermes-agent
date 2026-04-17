@@ -18,10 +18,26 @@ _MOCK_VALIDATION = {
 }
 
 
+class _EmptyCredentialPool:
+    def has_credentials(self) -> bool:
+        return False
+
+
+def _isolate_provider_discovery(monkeypatch):
+    from hermes_cli.auth import PROVIDER_REGISTRY
+
+    for pconfig in PROVIDER_REGISTRY.values():
+        for key in pconfig.api_key_env_vars:
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr("hermes_cli.auth._load_auth_store", lambda: {})
+    monkeypatch.setattr("agent.credential_pool.load_pool", lambda *_args, **_kwargs: _EmptyCredentialPool())
+
+
 def test_list_authenticated_providers_includes_custom_providers(monkeypatch):
     """No-args /model menus should include saved custom_providers entries."""
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
     monkeypatch.setattr(providers_mod, "HERMES_OVERLAYS", {})
+    _isolate_provider_discovery(monkeypatch)
 
     providers = list_authenticated_providers(
         current_provider="openai-codex",
@@ -109,6 +125,7 @@ def test_list_groups_same_name_custom_providers_into_one_row(monkeypatch):
     with all models collected, not N duplicate rows."""
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
     monkeypatch.setattr(providers_mod, "HERMES_OVERLAYS", {})
+    _isolate_provider_discovery(monkeypatch)
 
     providers = list_authenticated_providers(
         current_provider="openrouter",
@@ -140,6 +157,7 @@ def test_list_deduplicates_same_model_in_group(monkeypatch):
     duplicate entries in the models list."""
     monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
     monkeypatch.setattr(providers_mod, "HERMES_OVERLAYS", {})
+    _isolate_provider_discovery(monkeypatch)
 
     providers = list_authenticated_providers(
         current_provider="openrouter",

@@ -112,11 +112,22 @@ class TestResolveProvider:
     def test_auto_detect_with_aws_credentials(self, monkeypatch):
         """When AWS credentials are present and no other provider is configured,
         auto-detect should find bedrock."""
-        from hermes_cli.auth import resolve_provider
+        from hermes_cli.auth import PROVIDER_REGISTRY, resolve_provider
 
         # Clear all other provider env vars
-        for var in ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY",
-                     "ANTHROPIC_TOKEN", "GOOGLE_API_KEY", "DEEPSEEK_API_KEY"]:
+        for pconfig in PROVIDER_REGISTRY.values():
+            for var in pconfig.api_key_env_vars:
+                monkeypatch.delenv(var, raising=False)
+        for var in (
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_TOKEN",
+            "GOOGLE_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "HF_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        ):
             monkeypatch.delenv(var, raising=False)
 
         # Set AWS credentials

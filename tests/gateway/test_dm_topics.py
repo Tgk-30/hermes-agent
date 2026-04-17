@@ -32,6 +32,8 @@ def _ensure_telegram_mock():
     telegram_mod.constants.ChatType.SUPERGROUP = "supergroup"
     telegram_mod.constants.ChatType.CHANNEL = "channel"
     telegram_mod.constants.ChatType.PRIVATE = "private"
+    telegram_mod.ChatType = telegram_mod.constants.ChatType
+    telegram_mod.ParseMode = telegram_mod.constants.ParseMode
 
     for name in ("telegram", "telegram.ext", "telegram.constants", "telegram.request"):
         sys.modules.setdefault(name, telegram_mod)

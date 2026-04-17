@@ -1831,10 +1831,9 @@ def resolve_vision_provider_client(
                     return _finalize(main_provider, sync_client, default_model)
             else:
                 # Exotic provider (DeepSeek, Alibaba, Xiaomi, named custom, etc.)
-                # Prefer the user's configured main model when present.
-                # Only fall back to a provider-specific vision model when the
-                # main model is not configured at all.
-                vision_model = main_model or _PROVIDER_VISION_MODELS.get(main_provider, main_model)
+                # Prefer a provider-specific vision model when we know one;
+                # otherwise reuse the user's configured main model.
+                vision_model = _PROVIDER_VISION_MODELS.get(main_provider) or main_model
                 rpc_client, rpc_model = resolve_provider_client(
                     main_provider, vision_model,
                     api_mode=resolved_api_mode)

@@ -2784,11 +2784,15 @@ class TelegramAdapter(BasePlatformAdapter):
         chat = message.chat
         user = message.from_user
         
-        # Determine chat type
+        # Determine chat type. Normalize by value instead of relying on
+        # ChatType object identity; tests and optional telegram installs can
+        # provide equivalent constants from different module mocks.
+        chat_type_obj = getattr(chat, "type", "")
+        chat_type_value = str(chat_type_obj).split(".")[-1].lower()
         chat_type = "dm"
-        if chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        if chat_type_obj in (ChatType.GROUP, ChatType.SUPERGROUP) or chat_type_value in ("group", "supergroup"):
             chat_type = "group"
-        elif chat.type == ChatType.CHANNEL:
+        elif chat_type_obj == ChatType.CHANNEL or chat_type_value == "channel":
             chat_type = "channel"
 
         # Resolve DM topic name and skill binding

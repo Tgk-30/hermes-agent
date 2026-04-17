@@ -121,7 +121,14 @@ def _install_dependencies(provider_name: str) -> None:
 
     plugin_dir = find_provider_dir(provider_name)
     if not plugin_dir:
-        return
+        # External-only provider manifests may not have importable Python
+        # packages, so they are intentionally invisible to plugin discovery.
+        # Still read their plugin.yaml so dependency checks can guide setup.
+        repo_plugin_dir = Path(__file__).resolve().parents[1] / "plugins" / "memory" / provider_name
+        if repo_plugin_dir.is_dir():
+            plugin_dir = repo_plugin_dir
+        else:
+            return
     yaml_path = plugin_dir / "plugin.yaml"
     if not yaml_path.exists():
         return

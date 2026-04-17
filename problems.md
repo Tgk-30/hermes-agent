@@ -2188,3 +2188,51 @@ for the files it names.
 The current worktree has passed the strict local automated gates above. That is
 not an absolute guarantee for future dependency releases, production credentials,
 external services, or untested live gateway behavior.
+
+---
+
+## Post-Rebase Verification Addendum 2026-04-17T03:40:31Z
+
+### Status
+The branch was rebased onto `origin/main` at
+`8c478983 fix: enable TCP keepalives to detect dead provider connections`.
+Post-rebase verification exposed additional order-dependent tests and host
+credential leakage. Those have been fixed before publishing.
+
+### Additional Issues Fixed
+- Made Telegram message event chat-type detection resilient to mixed real and
+  mocked `ChatType` objects by checking both imported constants and normalized
+  string values.
+- Stabilized Telegram test mocks so `telegram.constants.ChatType` and
+  `telegram.ChatType` expose the same mock constants.
+- Restored known provider-specific vision defaults for active exotic
+  providers, while still reusing the main model when no vision default exists.
+- Isolated provider auto-detection tests from host API keys, AWS credentials,
+  auth stores, and credential pools.
+- Allowed memory provider setup to read external-only `plugin.yaml` manifests
+  even when the provider has no importable Python package.
+- Updated registry, setup-menu, preflight-compression, and Matrix encrypted
+  upload tests for the rebased behavior.
+
+### Post-Rebase Verification
+- Focused post-rebase regression set:
+  - `./venv/bin/python -m pytest -q tests/gateway/test_dm_topics.py tests/skills/test_google_workspace_api.py tests/tools/test_terminal_tool_requirements.py tests/cron/test_scheduler.py tests/gateway/test_discord_reply_mode.py tests/gateway/test_matrix.py tests/gateway/test_discord_admin_actions.py tests/tools/test_mcp_tool.py tests/tools/test_mcp_probe.py tests/agent/test_trajectory.py tests/hermes_cli/test_api_key_providers.py tests/hermes_cli/test_model_switch_custom_providers.py tests/hermes_cli/test_memory_setup_regressions.py tests/tools/test_registry.py tests/hermes_cli/test_setup_prompt_menus.py tests/run_agent/test_413_compression.py tests/agent/test_auxiliary_named_custom_providers.py tests/agent/test_bedrock_integration.py`
+  - Result: `666 passed`
+- Full strict Python suite after rebase fixes:
+  - `PYTHONTRACEMALLOC=5 ./venv/bin/python -m pytest -q -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning`
+  - Result: `12398 passed, 39 skipped, 36 warnings`
+- Independent frontend/documentation verification lane:
+  - `npm --prefix web run lint` — passed with one existing
+    `react-refresh/only-export-components` warning.
+  - `npm --prefix web run build` — passed.
+  - `npm --prefix web run test:markdown` — 4 passed.
+  - `npm --prefix website run build` — passed with the known upstream
+    `vscode-languageserver-types` webpack warning.
+  - `npm --prefix website run typecheck` — passed.
+- Hygiene:
+  - `git diff --check` — passed before appending this addendum.
+
+### Remaining Caveat
+The rebased branch has passed the strict local automated gates listed above.
+This still cannot be a literal 100% guarantee for live credentials, external
+services, future dependency releases, or production-only traffic patterns.

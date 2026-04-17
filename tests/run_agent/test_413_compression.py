@@ -400,7 +400,7 @@ class TestPreflightCompression:
         # Set a small context so the history is "oversized", but large enough
         # that the compressed result (2 short messages) fits in a single pass.
         agent.context_compressor.context_length = 2000
-        agent.context_compressor.threshold_tokens = 200
+        agent.context_compressor.threshold_tokens = 300
 
         # Build a history that will be large enough to trigger preflight
         # (each message ~50 chars ≈ 13 tokens, 40 messages ≈ 520 tokens > 200 threshold)
