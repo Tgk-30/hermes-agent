@@ -52,6 +52,9 @@ class TestToolKindMap:
     def test_tool_kind_execute_code(self):
         assert get_tool_kind("execute_code") == "execute"
 
+    def test_tool_kind_scan_codebase(self):
+        assert get_tool_kind("scan_codebase") == "search"
+
     def test_tool_kind_browser_navigate(self):
         assert get_tool_kind("browser_navigate") == "fetch"
 
@@ -87,6 +90,10 @@ class TestBuildToolTitle:
     def test_terminal_title_includes_command(self):
         title = build_tool_title("terminal", {"command": "ls -la /tmp"})
         assert "ls -la /tmp" in title
+
+    def test_scan_codebase_title_includes_focus(self):
+        title = build_tool_title("scan_codebase", {"focus": "memory architecture"})
+        assert title == "scan codebase: memory architecture"
 
     def test_terminal_title_truncates_long_command(self):
         long_cmd = "x" * 200

@@ -890,88 +890,95 @@ class BatchRunner:
         
         start_time = time.time()
         
-        print(f"\n🔧 Initializing {self.num_workers} worker processes...")
-        
+        worker_label = "process" if self.num_workers == 1 else "processes"
+        print(f"\n🔧 Initializing {self.num_workers} worker {worker_label}...")
+
         # Checkpoint writes happen in the parent process; keep a lock for safety.
         checkpoint_lock = Lock()
 
-        # Process batches in parallel
-        with Pool(processes=self.num_workers) as pool:
-            # Create tasks for each batch
-            tasks = [
-                (
-                    batch_num,
-                    batch_data,
-                    str(self.output_dir),  # Convert Path to string for pickling
-                    completed_prompts_set,
-                    config
-                )
-                for batch_num, batch_data in enumerate(self.batches)
-            ]
-            
-            print(f"✅ Created {len(tasks)} batch tasks")
-            print("🚀 Starting parallel batch processing...\n")
-            
-            # Use rich Progress for better visual tracking with persistent bottom bar
-            # redirect_stdout/stderr lets rich manage all output so progress bar stays clean
-            results = []
-            console = Console(force_terminal=True)
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]📦 Batches"),
-                BarColumn(bar_width=40),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TimeRemainingColumn(),
-                console=console,
-                refresh_per_second=2,
-                transient=False,
-                redirect_stdout=False,
-                redirect_stderr=False,
-            ) as progress:
-                task = progress.add_task("Processing", total=len(tasks))
-                
-                # Temporarily suppress DEBUG logging to avoid bar interference
-                root_logger = logging.getLogger()
-                original_level = root_logger.level
-                root_logger.setLevel(logging.WARNING)
-                
-                try:
-                    for result in pool.imap_unordered(_process_batch_worker, tasks):
-                        results.append(result)
-                        progress.update(task, advance=1)
+        # Create tasks for each batch. Convert Path to string for pickling.
+        tasks = [
+            (
+                batch_num,
+                batch_data,
+                str(self.output_dir),
+                completed_prompts_set,
+                config
+            )
+            for batch_num, batch_data in enumerate(self.batches)
+        ]
 
-                        # Incremental checkpoint update (so resume works after crash)
-                        try:
-                            batch_num = result.get('batch_num')
-                            completed = result.get('completed_prompts', []) or []
-                            completed_prompts_set.update(completed)
+        print(f"✅ Created {len(tasks)} batch tasks")
+        print("🚀 Starting batch processing...\n")
 
-                            if isinstance(batch_num, int):
-                                checkpoint_data.setdefault('batch_stats', {})[str(batch_num)] = {
-                                    'processed': result.get('processed', 0),
-                                    'skipped': result.get('skipped', 0),
-                                    'discarded_no_reasoning': result.get('discarded_no_reasoning', 0),
-                                }
+        def record_batch_result(result: Dict[str, Any], progress: Progress, task_id: int) -> None:
+            results.append(result)
+            progress.update(task_id, advance=1)
 
-                            checkpoint_data['completed_prompts'] = sorted(completed_prompts_set)
-                            self._save_checkpoint(checkpoint_data, lock=checkpoint_lock)
-                        except Exception as ckpt_err:
-                            # Don't fail the run if checkpoint write fails
-                            print(f"⚠️  Warning: Failed to save incremental checkpoint: {ckpt_err}")
-                except Exception as e:
-                    logger.error("Batch worker failed: %s", e, exc_info=True)
-                    raise
-                finally:
-                    root_logger.setLevel(original_level)
+            # Incremental checkpoint update (so resume works after crash)
+            try:
+                batch_num = result.get('batch_num')
+                completed = result.get('completed_prompts', []) or []
+                completed_prompts_set.update(completed)
+
+                if isinstance(batch_num, int):
+                    checkpoint_data.setdefault('batch_stats', {})[str(batch_num)] = {
+                        'processed': result.get('processed', 0),
+                        'skipped': result.get('skipped', 0),
+                        'discarded_no_reasoning': result.get('discarded_no_reasoning', 0),
+                    }
+
+                checkpoint_data['completed_prompts'] = sorted(completed_prompts_set)
+                self._save_checkpoint(checkpoint_data, lock=checkpoint_lock)
+            except Exception as ckpt_err:
+                # Don't fail the run if checkpoint write fails
+                print(f"⚠️  Warning: Failed to save incremental checkpoint: {ckpt_err}")
+
+        # Use rich Progress for better visual tracking with persistent bottom bar.
+        # redirect_stdout/stderr lets rich manage all output so progress bar stays clean.
+        results = []
+        console = Console(force_terminal=True)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]📦 Batches"),
+            BarColumn(bar_width=40),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=console,
+            refresh_per_second=2,
+            transient=False,
+            redirect_stdout=False,
+            redirect_stderr=False,
+        ) as progress:
+            task = progress.add_task("Processing", total=len(tasks))
+
+            # Temporarily suppress DEBUG logging to avoid bar interference.
+            root_logger = logging.getLogger()
+            original_level = root_logger.level
+            root_logger.setLevel(logging.WARNING)
+
+            try:
+                if self.num_workers <= 1:
+                    for task_args in tasks:
+                        record_batch_result(_process_batch_worker(task_args), progress, task)
+                else:
+                    with Pool(processes=self.num_workers) as pool:
+                        for result in pool.imap_unordered(_process_batch_worker, tasks):
+                            record_batch_result(result, progress, task)
+            except Exception as e:
+                logger.error("Batch worker failed: %s", e, exc_info=True)
+                raise
+            finally:
+                root_logger.setLevel(original_level)
         
         # Aggregate all batch statistics and update checkpoint
-        all_completed_prompts = list(completed_prompts_set)
         total_reasoning_stats = {"total_assistant_turns": 0, "turns_with_reasoning": 0, "turns_without_reasoning": 0}
         
         for batch_result in results:
-            # Add newly completed prompts
-            all_completed_prompts.extend(batch_result.get("completed_prompts", []))
+            # Add newly completed prompts. Keep this deduped: incremental
+            # checkpointing has already updated the same set in normal runs.
+            completed_prompts_set.update(batch_result.get("completed_prompts", []) or [])
             
             # Aggregate tool stats
             for tool_name, stats in batch_result.get("tool_stats", {}).items():
@@ -992,10 +999,10 @@ class BatchRunner:
         
         # Save final checkpoint (best-effort; incremental writes already happened)
         try:
-            checkpoint_data["completed_prompts"] = all_completed_prompts
+            checkpoint_data["completed_prompts"] = sorted(completed_prompts_set)
             self._save_checkpoint(checkpoint_data, lock=checkpoint_lock)
         except Exception as ckpt_err:
-            print(f"âš ï¸  Warning: Failed to save final checkpoint: {ckpt_err}")
+            print(f"Warning: Failed to save final checkpoint: {ckpt_err}")
         
         # Calculate success rates
         for tool_name in total_tool_stats:
@@ -1303,4 +1310,3 @@ def main(
 
 if __name__ == "__main__":
     fire.Fire(main)
-

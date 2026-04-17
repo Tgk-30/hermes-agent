@@ -8,12 +8,35 @@ Requires: PyNaCl>=1.5.0, discord.py[voice] (opus codec)
 """
 
 import struct
+import sys
 import time
 import pytest
 
 pytestmark = pytest.mark.integration
 
+
+def _evict_discord_test_mock() -> None:
+    """Ensure this integration test uses the real discord.py package.
+
+    Gateway unit-test conftests install a lightweight ``discord`` mock at
+    collection time when the real package was not imported yet. This module
+    exercises real Opus decoding, so a mock would make Decoder.decode() return
+    a MagicMock/empty buffer and hide the production voice path.
+    """
+    mod = sys.modules.get("discord")
+    if mod is not None and not hasattr(mod, "__file__"):
+        for name in list(sys.modules):
+            if name == "discord" or name.startswith("discord."):
+                sys.modules.pop(name, None)
+
+    gateway_mod = sys.modules.get("gateway.platforms.discord")
+    gateway_discord = getattr(gateway_mod, "discord", None) if gateway_mod else None
+    if gateway_discord is not None and not hasattr(gateway_discord, "__file__"):
+        sys.modules.pop("gateway.platforms.discord", None)
+
+
 # Skip entire module if voice deps are missing
+_evict_discord_test_mock()
 pytest.importorskip("nacl.secret", reason="PyNaCl required for voice integration tests")
 discord = pytest.importorskip("discord", reason="discord.py required for voice integration tests")
 

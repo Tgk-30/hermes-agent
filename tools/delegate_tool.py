@@ -50,6 +50,14 @@ _SUBAGENT_TOOLSETS = sorted(
 _TOOLSET_LIST_STR = ", ".join(f"'{n}'" for n in _SUBAGENT_TOOLSETS)
 
 _DEFAULT_MAX_CONCURRENT_CHILDREN = 100
+_PROVIDER_DEFAULT_ACTIVE_CHILDREN = {
+    # MiniMax token-plan keys handle one-shot fan-out better than autonomous
+    # multi-turn agents. Keep child batches accepted at the normal limit, but
+    # avoid a synchronized retry storm when each child starts making tool-driven
+    # follow-up model calls with growing context.
+    "minimax": 6,
+    "minimax-cn": 6,
+}
 MAX_DEPTH = 2  # parent (0) -> child (1) -> grandchild rejected (2)
 
 
@@ -77,6 +85,60 @@ def _get_max_concurrent_children() -> int:
         except (TypeError, ValueError):
             pass
     return _DEFAULT_MAX_CONCURRENT_CHILDREN
+
+
+def _provider_env_key(provider: str, suffix: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in provider.upper()).strip("_")
+    return f"DELEGATION_{safe}_{suffix}"
+
+
+def _coerce_positive_int(value: Any) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _get_provider_active_child_limit(cfg: dict, provider: Optional[str]) -> Optional[int]:
+    """Return provider-specific active child worker cap, if configured.
+
+    ``delegation.max_concurrent_children`` remains the maximum accepted batch
+    size. This cap controls how many child agents actively run at the same time
+    for providers that rate-limit autonomous multi-turn fan-out more tightly
+    than single-shot requests.
+    """
+    provider_key = (provider or "").strip().lower()
+    if not provider_key:
+        return None
+
+    limits = cfg.get("provider_max_concurrent_children")
+    if isinstance(limits, dict):
+        for key in (provider_key, provider_key.replace("-", "_")):
+            val = _coerce_positive_int(limits.get(key))
+            if val is not None:
+                return val
+
+    for suffix in ("MAX_CONCURRENT_CHILDREN", "MAX_WORKERS"):
+        val = _coerce_positive_int(os.getenv(_provider_env_key(provider_key, suffix)))
+        if val is not None:
+            return val
+
+    return _PROVIDER_DEFAULT_ACTIVE_CHILDREN.get(provider_key)
+
+
+def _get_effective_child_worker_limit(
+    *,
+    cfg: dict,
+    provider: Optional[str],
+    max_children: int,
+    task_count: int,
+) -> int:
+    base_limit = max(1, min(max_children, task_count))
+    provider_limit = _get_provider_active_child_limit(cfg, provider)
+    if provider_limit is None:
+        return base_limit
+    return max(1, min(base_limit, provider_limit))
 DEFAULT_MAX_ITERATIONS = 1000
 _HEARTBEAT_INTERVAL = 30  # seconds between parent activity heartbeats during delegation
 DEFAULT_TOOLSETS = ["terminal", "file", "web"]
@@ -517,12 +579,9 @@ def _run_single_child(
                             trace_by_id[tc_id] = entry_t
                 elif msg.get("role") == "tool":
                     content = msg.get("content", "")
-                    is_error = bool(
-                        content and "error" in content[:80].lower()
-                    )
                     result_meta = {
                         "result_bytes": len(content),
-                        "status": "error" if is_error else "ok",
+                        "status": _classify_tool_result_status(content),
                     }
                     # Match by tool_call_id for parallel calls
                     tc_id = msg.get("tool_call_id")
@@ -620,6 +679,43 @@ def _run_single_child(
         except Exception:
             logger.debug("Failed to close child agent after delegation")
 
+
+def _classify_tool_result_status(content: str) -> str:
+    """Classify a tool result without false-positive matching JSON field names."""
+    if not content:
+        return "ok"
+
+    if isinstance(content, str):
+        stripped = content.strip()
+    else:
+        stripped = str(content).strip()
+
+    try:
+        parsed = json.loads(stripped)
+    except Exception:
+        parsed = None
+
+    if isinstance(parsed, dict):
+        for key in ("success", "ok"):
+            if key in parsed:
+                return "ok" if bool(parsed.get(key)) else "error"
+
+        status = str(parsed.get("status") or "").strip().lower()
+        if status in {"ok", "success", "completed"}:
+            return "ok"
+        if status in {"error", "failed", "failure"}:
+            return "error"
+
+        err = parsed.get("error")
+        if err not in (None, "", False, [], {}):
+            return "error"
+        return "ok"
+
+    lowered = stripped[:120].lower()
+    if lowered.startswith(("error:", "failed:", "failure:", "traceback ")):
+        return "error"
+    return "ok"
+
 def delegate_task(
     goal: Optional[str] = None,
     context: Optional[str] = None,
@@ -697,6 +793,18 @@ def delegate_task(
     if not task_list:
         return tool_error("No tasks provided.")
 
+    effective_provider = (
+        creds.get("provider")
+        or getattr(parent_agent, "provider", None)
+        or ""
+    )
+    active_worker_limit = _get_effective_child_worker_limit(
+        cfg=cfg,
+        provider=effective_provider,
+        max_children=max_children,
+        task_count=len(task_list),
+    )
+
     # Validate each task has a goal
     for i, task in enumerate(task_list):
         if not task.get("goal", "").strip():
@@ -748,7 +856,7 @@ def delegate_task(
         completed_count = 0
         spinner_ref = getattr(parent_agent, '_delegate_spinner', None)
 
-        with ThreadPoolExecutor(max_workers=max_children) as executor:
+        with ThreadPoolExecutor(max_workers=active_worker_limit) as executor:
             futures = {}
             for i, t, child in children:
                 future = executor.submit(
@@ -860,6 +968,10 @@ def delegate_task(
     return json.dumps({
         "results": results,
         "total_duration_seconds": total_duration,
+        "requested_task_count": len(task_list),
+        "max_concurrent_children": max_children,
+        "active_worker_limit": active_worker_limit,
+        "provider": effective_provider or None,
     }, ensure_ascii=False)
 
 

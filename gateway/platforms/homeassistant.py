@@ -145,7 +145,12 @@ class HomeAssistantAdapter(BasePlatformAdapter):
         self._session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         )
-        self._ws = await self._session.ws_connect(ws_url, heartbeat=30, timeout=30)
+        ws_timeout = (
+            aiohttp.ClientWSTimeout(ws_close=30)
+            if hasattr(aiohttp, "ClientWSTimeout")
+            else 30
+        )
+        self._ws = await self._session.ws_connect(ws_url, heartbeat=30, timeout=ws_timeout)
 
         # Step 1: Receive auth_required
         msg = await self._ws.receive_json()
@@ -186,25 +191,42 @@ class HomeAssistantAdapter(BasePlatformAdapter):
 
     async def _cleanup_ws(self) -> None:
         """Close WebSocket and session."""
-        if self._ws and not self._ws.closed:
-            await self._ws.close()
+        ws = self._ws
+        session = self._session
         self._ws = None
-        if self._session and not self._session.closed:
-            await self._session.close()
         self._session = None
+
+        if ws and not ws.closed:
+            try:
+                await asyncio.wait_for(ws.close(), timeout=5)
+            except (asyncio.TimeoutError, Exception) as exc:
+                logger.debug("[%s] Timed out closing HA websocket: %s", self.name, exc)
+        if session and not session.closed:
+            try:
+                await asyncio.wait_for(session.close(), timeout=5)
+            except (asyncio.TimeoutError, Exception) as exc:
+                logger.debug("[%s] Timed out closing HA websocket session: %s", self.name, exc)
 
     async def disconnect(self) -> None:
         """Disconnect from Home Assistant."""
         self._running = False
-        if self._listen_task:
-            self._listen_task.cancel()
+        listen_task = self._listen_task
+        self._listen_task = None
+
+        if listen_task and not listen_task.done():
+            listen_task.cancel()
+            # Close the websocket before awaiting the listener so aiohttp's
+            # async iterator wakes up promptly during shutdown.
+            await self._cleanup_ws()
             try:
-                await self._listen_task
+                await asyncio.wait_for(listen_task, timeout=5)
             except asyncio.CancelledError:
                 pass
-            self._listen_task = None
+            except asyncio.TimeoutError:
+                logger.warning("[%s] Timed out waiting for HA listener shutdown", self.name)
+        else:
+            await self._cleanup_ws()
 
-        await self._cleanup_ws()
         if self._rest_session and not self._rest_session.closed:
             await self._rest_session.close()
         self._rest_session = None

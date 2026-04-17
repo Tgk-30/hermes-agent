@@ -27,6 +27,7 @@ TOOL_KIND_MAP: Dict[str, ToolKind] = {
     "terminal": "execute",
     "process": "execute",
     "execute_code": "execute",
+    "scan_codebase": "search",
     # Web / fetch
     "web_search": "fetch",
     "web_extract": "fetch",
@@ -91,6 +92,11 @@ def build_tool_title(tool_name: str, args: Dict[str, Any]) -> str:
         return f"delegate: {goal}" if goal else "delegate task"
     if tool_name == "execute_code":
         return "execute code"
+    if tool_name == "scan_codebase":
+        focus = args.get("focus") or args.get("path") or ""
+        if focus and len(focus) > 60:
+            focus = focus[:57] + "..."
+        return f"scan codebase: {focus}" if focus else "scan codebase"
     if tool_name == "vision_analyze":
         return f"analyze image: {args.get('question', '?')[:50]}"
     return tool_name

@@ -294,6 +294,7 @@ class TestBuiltinDiscovery:
             "tools.browser_tool",
             "tools.clarify_tool",
             "tools.code_execution_tool",
+            "tools.codebase_scan_tool",
             "tools.cronjob_tools",
             "tools.delegate_tool",
             "tools.discord_admin_tool",

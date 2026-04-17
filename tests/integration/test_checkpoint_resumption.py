@@ -27,9 +27,11 @@ import shutil
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import traceback
+from unittest.mock import patch
 
 # Add project root to path to import batch_runner
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -124,6 +126,65 @@ def _cleanup_test_artifacts(*paths):
             p.unlink(missing_ok=True)
 
 
+@contextmanager
+def _temporary_cwd(path: Path):
+    previous = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
+def _fake_process_single_prompt(
+    prompt_index: int,
+    prompt_data: Dict[str, Any],
+    batch_num: int,
+    config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Deterministic agent result for checkpoint tests; avoids live API calls."""
+    time.sleep(0.15)
+    prompt = prompt_data["prompt"]
+    return {
+        "success": True,
+        "prompt_index": prompt_index,
+        "trajectory": [
+            {"from": "human", "value": prompt},
+            {
+                "from": "gpt",
+                "value": "<REASONING_SCRATCHPAD>Compute directly.</REASONING_SCRATCHPAD>\n4",
+            },
+        ],
+        "tool_stats": {},
+        "reasoning_stats": {
+            "total_assistant_turns": 1,
+            "turns_with_reasoning": 1,
+            "turns_without_reasoning": 0,
+            "has_any_reasoning": True,
+        },
+        "completed": True,
+        "partial": False,
+        "api_calls": 1,
+        "toolsets_used": ["test"],
+        "metadata": {
+            "batch_num": batch_num,
+            "timestamp": "checkpoint-test",
+            "model": config["model"],
+        },
+    }
+
+
+def _running_under_pytest() -> bool:
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
+def _pytest_assert_or_return(success: bool, message: str):
+    if _running_under_pytest():
+        assert success, message
+        return None
+    return success
+
+
 def test_current_implementation(tmp_path: Optional[Path] = None):
     """Test the current checkpoint implementation."""
     print("\n" + "=" * 70)
@@ -152,42 +213,46 @@ def test_current_implementation(tmp_path: Optional[Path] = None):
     print(f"\n▶️  Starting batch run...")
     print(f"   Dataset: {dataset_file}")
     print(f"   Batch size: 3 (4 batches total)")
-    print(f"   Workers: 2")
+    print(f"   Workers: 1")
     print(f"   Expected behavior: If incremental, checkpoint should update during run")
     
     start_time = time.time()
     
     try:
-        runner = BatchRunner(
-            dataset_file=str(dataset_file),
-            batch_size=3,
-            run_name=run_name,
-            distribution="default",
-            max_iterations=3,  # Keep it short
-            model="claude-opus-4-20250514",
-            num_workers=2,
-            verbose=False
-        )
-        
-        # Run with monitoring
-        import threading
-        snapshots = []
-        
-        def monitor():
-            nonlocal snapshots
-            snapshots = monitor_checkpoint_during_run(checkpoint_file, duration=60)
-        
-        monitor_thread = threading.Thread(target=monitor, daemon=True)
-        monitor_thread.start()
-        
-        runner.run(resume=False)
-        
-        monitor_thread.join(timeout=2)
+        with _temporary_cwd(workspace), patch(
+            "batch_runner._process_single_prompt",
+            side_effect=_fake_process_single_prompt,
+        ):
+            runner = BatchRunner(
+                dataset_file=str(dataset_file),
+                batch_size=3,
+                run_name=run_name,
+                distribution="default",
+                max_iterations=3,  # Keep it short
+                model="checkpoint-test-model",
+                num_workers=1,
+                verbose=False
+            )
+
+            # Run with monitoring
+            import threading
+            snapshots = []
+
+            def monitor():
+                nonlocal snapshots
+                snapshots = monitor_checkpoint_during_run(checkpoint_file, duration=5)
+
+            monitor_thread = threading.Thread(target=monitor, daemon=True)
+            monitor_thread.start()
+
+            runner.run(resume=False)
+
+            monitor_thread.join(timeout=6)
         
     except Exception as e:
         print(f"❌ Error during run: {e}")
         traceback.print_exc()
-        return False
+        return _pytest_assert_or_return(False, f"Batch run failed: {e}")
     finally:
         _cleanup_test_artifacts(workspace)
     
@@ -203,11 +268,11 @@ def test_current_implementation(tmp_path: Optional[Path] = None):
     if len(snapshots) == 0:
         print("\n❌ ISSUE: No checkpoint updates observed during run")
         print("   This suggests checkpoints are only saved at the end")
-        return False
+        return _pytest_assert_or_return(False, "No checkpoint updates were observed during the run")
     elif len(snapshots) == 1:
         print("\n⚠️  WARNING: Only 1 checkpoint update (likely at the end)")
         print("   This confirms the bug - no incremental checkpointing")
-        return False
+        return _pytest_assert_or_return(False, "Only one checkpoint update was observed")
     else:
         print(f"\n✅ GOOD: Multiple checkpoint updates ({len(snapshots)}) observed")
         print("   Checkpointing appears to be incremental")
@@ -218,7 +283,7 @@ def test_current_implementation(tmp_path: Optional[Path] = None):
             print(f"   {i}. [{snapshot['elapsed_seconds']:6.2f}s] "
                   f"{snapshot['completed_count']} prompts completed")
         
-        return True
+        return _pytest_assert_or_return(True, "Checkpoint updates were not incremental")
 
 
 def test_interruption_and_resume(tmp_path: Optional[Path] = None):
@@ -253,23 +318,27 @@ def test_interruption_and_resume(tmp_path: Optional[Path] = None):
         with open(temp_dataset, 'w') as f:
             f.writelines(lines)
         
-        runner = BatchRunner(
-            dataset_file=str(temp_dataset),
-            batch_size=2,
-            run_name=run_name,
-            distribution="default",
-            max_iterations=3,
-            model="claude-opus-4-20250514",
-            num_workers=1,
-            verbose=False
-        )
-        
-        runner.run(resume=False)
+        with _temporary_cwd(workspace), patch(
+            "batch_runner._process_single_prompt",
+            side_effect=_fake_process_single_prompt,
+        ):
+            runner = BatchRunner(
+                dataset_file=str(temp_dataset),
+                batch_size=2,
+                run_name=run_name,
+                distribution="default",
+                max_iterations=3,
+                model="checkpoint-test-model",
+                num_workers=1,
+                verbose=False
+            )
+
+            runner.run(resume=False)
         
         # Check checkpoint after first run
         if not checkpoint_file.exists():
             print("❌ ERROR: Checkpoint file not created after first run")
-            return False
+            return _pytest_assert_or_return(False, "Checkpoint file was not created after first run")
         
         with open(checkpoint_file, 'r') as f:
             checkpoint_data = json.load(f)
@@ -279,19 +348,23 @@ def test_interruption_and_resume(tmp_path: Optional[Path] = None):
         
         # Now try to resume with full dataset
         print(f"\n▶️  Starting resume run with full dataset (15 prompts)...")
-        
-        runner2 = BatchRunner(
-            dataset_file=str(dataset_file),
-            batch_size=2,
-            run_name=run_name,
-            distribution="default",
-            max_iterations=3,
-            model="claude-opus-4-20250514",
-            num_workers=1,
-            verbose=False
-        )
-        
-        runner2.run(resume=True)
+
+        with _temporary_cwd(workspace), patch(
+            "batch_runner._process_single_prompt",
+            side_effect=_fake_process_single_prompt,
+        ):
+            runner2 = BatchRunner(
+                dataset_file=str(dataset_file),
+                batch_size=2,
+                run_name=run_name,
+                distribution="default",
+                max_iterations=3,
+                model="checkpoint-test-model",
+                num_workers=1,
+                verbose=False
+            )
+
+            runner2.run(resume=True)
         
         # Check final checkpoint
         with open(checkpoint_file, 'r') as f:
@@ -308,15 +381,15 @@ def test_interruption_and_resume(tmp_path: Optional[Path] = None):
         
         if final_completed == 15:
             print("\n✅ PASS: Resume successfully completed all prompts")
-            return True
+            return _pytest_assert_or_return(True, "Resume did not complete all prompts")
         else:
             print(f"\n❌ FAIL: Expected 15 completed, got {final_completed}")
-            return False
+            return _pytest_assert_or_return(False, f"Expected 15 completed prompts, got {final_completed}")
             
     except Exception as e:
         print(f"❌ Error during test: {e}")
         traceback.print_exc()
-        return False
+        return _pytest_assert_or_return(False, f"Resume test failed: {e}")
     finally:
         _cleanup_test_artifacts(workspace)
 
@@ -447,4 +520,3 @@ def main(
 if __name__ == "__main__":
     import fire
     fire.Fire(main)
-

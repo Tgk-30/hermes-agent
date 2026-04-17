@@ -24,6 +24,9 @@ from tools.delegate_tool import (
     DELEGATE_TASK_SCHEMA,
     DEFAULT_MAX_ITERATIONS,
     _get_max_concurrent_children,
+    _get_effective_child_worker_limit,
+    _get_provider_active_child_limit,
+    _classify_tool_result_status,
     MAX_DEPTH,
     check_delegate_requirements,
     delegate_task,
@@ -477,6 +480,47 @@ class TestDelegateObservability(unittest.TestCase):
             trace = result["results"][0]["tool_trace"]
             self.assertEqual(trace[0]["status"], "error")
 
+    def test_tool_result_status_does_not_false_positive_on_null_error_field(self):
+        """Successful JSON tool results often include an error field set to null."""
+        content = json.dumps({
+            "success": True,
+            "stdout": "/Users/openclaw/.hermes/hermes-agent\n",
+            "stderr": "",
+            "error": None,
+        })
+        self.assertEqual(_classify_tool_result_status(content), "ok")
+
+    def test_tool_trace_json_success_with_null_error_is_ok(self):
+        parent = _make_mock_parent(depth=0)
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.model = "claude-sonnet-4-6"
+            mock_child.session_prompt_tokens = 0
+            mock_child.session_completion_tokens = 0
+            mock_child.run_conversation.return_value = {
+                "final_response": "done",
+                "completed": True,
+                "interrupted": False,
+                "api_calls": 1,
+                "messages": [
+                    {"role": "assistant", "tool_calls": [
+                        {"id": "tc_1", "function": {"name": "terminal", "arguments": '{"cmd": "pwd"}'}}
+                    ]},
+                    {"role": "tool", "tool_call_id": "tc_1", "content": json.dumps({
+                        "success": True,
+                        "stdout": "/Users/openclaw/.hermes/hermes-agent\n",
+                        "stderr": "",
+                        "error": None,
+                    })},
+                ],
+            }
+            MockAgent.return_value = mock_child
+
+            result = json.loads(delegate_task(goal="Test success trace", parent_agent=parent))
+            trace = result["results"][0]["tool_trace"]
+            self.assertEqual(trace[0]["status"], "ok")
+
     def test_parallel_tool_calls_paired_correctly(self):
         """Parallel tool calls should each get their own result via tool_call_id matching."""
         parent = _make_mock_parent(depth=0)
@@ -578,6 +622,62 @@ class TestBlockedTools(unittest.TestCase):
         self.assertEqual(_get_max_concurrent_children(), 100)
         self.assertEqual(DEFAULT_MAX_ITERATIONS, 1000)
         self.assertEqual(MAX_DEPTH, 2)
+
+
+class TestProviderActiveChildLimits(unittest.TestCase):
+    def test_minimax_defaults_to_safer_active_worker_limit(self):
+        with patch.dict(os.environ, {
+            "DELEGATION_MINIMAX_MAX_WORKERS": "",
+            "DELEGATION_MINIMAX_MAX_CONCURRENT_CHILDREN": "",
+        }, clear=False):
+            self.assertEqual(_get_provider_active_child_limit({}, "minimax"), 6)
+            self.assertEqual(_get_effective_child_worker_limit(
+                cfg={},
+                provider="minimax",
+                max_children=100,
+                task_count=25,
+            ), 6)
+
+    def test_non_rate_sensitive_provider_uses_batch_limit(self):
+        self.assertIsNone(_get_provider_active_child_limit({}, "openrouter"))
+        self.assertEqual(_get_effective_child_worker_limit(
+            cfg={},
+            provider="openrouter",
+            max_children=100,
+            task_count=25,
+        ), 25)
+
+    def test_provider_limit_can_be_overridden_in_config(self):
+        cfg = {"provider_max_concurrent_children": {"minimax": 12}}
+        self.assertEqual(_get_provider_active_child_limit(cfg, "minimax"), 12)
+        self.assertEqual(_get_effective_child_worker_limit(
+            cfg=cfg,
+            provider="minimax",
+            max_children=100,
+            task_count=25,
+        ), 12)
+
+    def test_provider_limit_respects_task_count_and_generic_cap(self):
+        cfg = {"provider_max_concurrent_children": {"minimax": 12}}
+        self.assertEqual(_get_effective_child_worker_limit(
+            cfg=cfg,
+            provider="minimax",
+            max_children=8,
+            task_count=25,
+        ), 8)
+        self.assertEqual(_get_effective_child_worker_limit(
+            cfg=cfg,
+            provider="minimax",
+            max_children=100,
+            task_count=4,
+        ), 4)
+
+    def test_provider_limit_can_be_overridden_by_env(self):
+        with patch.dict(os.environ, {
+            "DELEGATION_MINIMAX_MAX_CONCURRENT_CHILDREN": "",
+            "DELEGATION_MINIMAX_MAX_WORKERS": "9",
+        }, clear=False):
+            self.assertEqual(_get_provider_active_child_limit({}, "minimax"), 9)
 
 
 class TestDelegationCredentialResolution(unittest.TestCase):

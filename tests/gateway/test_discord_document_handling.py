@@ -369,10 +369,10 @@ class TestIncomingDocumentHandling:
     @pytest.mark.asyncio
     async def test_image_attachment_unaffected(self, adapter):
         """Image attachments should still go through the image path, not the document path."""
-        with patch(
-            "gateway.platforms.discord.cache_image_from_url",
-            new_callable=AsyncMock,
-            return_value="/tmp/cached_image.png",
+        with patch.object(
+            discord_platform,
+            "cache_image_from_url",
+            AsyncMock(return_value="/tmp/cached_image.png"),
         ):
             msg = make_message([
                 make_attachment(filename="photo.png", content_type="image/png")

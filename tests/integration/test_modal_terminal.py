@@ -55,6 +55,28 @@ _get_env_config = terminal_module._get_env_config
 cleanup_vm = terminal_module.cleanup_vm
 
 
+def _running_under_pytest() -> bool:
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
+def _skip_unless_modal_ready_for_pytest() -> None:
+    if not _running_under_pytest():
+        return
+
+    config = _get_env_config()
+    if config['env_type'] != 'modal':
+        pytest.skip("Modal terminal integration requires TERMINAL_ENV=modal")
+    if not check_terminal_requirements():
+        pytest.skip("Modal terminal integration requirements are not configured")
+
+
+def _pytest_assert_or_return(success: bool, message: str):
+    if _running_under_pytest():
+        assert success, message
+        return None
+    return success
+
+
 def test_modal_requirements():
     """Test that Modal requirements are met."""
     print("\n" + "=" * 60)
@@ -76,16 +98,22 @@ def test_modal_requirements():
     if config['env_type'] != 'modal':
         print(f"\n⚠️  TERMINAL_ENV is '{config['env_type']}', not 'modal'")
         print("   Set TERMINAL_ENV=modal in .env or export it to test Modal backend")
+        if _running_under_pytest():
+            pytest.skip("Modal terminal integration requires TERMINAL_ENV=modal")
         return False
     
     requirements_met = check_terminal_requirements()
     print(f"\nRequirements check: {'✅ Passed' if requirements_met else '❌ Failed'}")
     
-    return requirements_met
+    if not requirements_met and _running_under_pytest():
+        pytest.skip("Modal terminal integration requirements are not configured")
+    return _pytest_assert_or_return(requirements_met, "Modal terminal requirements failed")
 
 
 def test_simple_command():
     """Test executing a simple command."""
+    _skip_unless_modal_ready_for_pytest()
+
     print("\n" + "=" * 60)
     print("TEST 2: Simple Command Execution")
     print("=" * 60)
@@ -107,11 +135,13 @@ def test_simple_command():
     # Cleanup
     cleanup_vm(test_task_id)
     
-    return success
+    return _pytest_assert_or_return(success, "Modal simple command did not return expected output")
 
 
 def test_python_execution():
     """Test executing Python code in Modal."""
+    _skip_unless_modal_ready_for_pytest()
+
     print("\n" + "=" * 60)
     print("TEST 3: Python Execution")
     print("=" * 60)
@@ -135,11 +165,13 @@ def test_python_execution():
     # Cleanup
     cleanup_vm(test_task_id)
     
-    return success
+    return _pytest_assert_or_return(success, "Modal Python command did not return expected output")
 
 
 def test_pip_install():
     """Test installing a package with pip in Modal."""
+    _skip_unless_modal_ready_for_pytest()
+
     print("\n" + "=" * 60)
     print("TEST 4: Pip Install Test")
     print("=" * 60)
@@ -168,11 +200,13 @@ def test_pip_install():
     # Cleanup
     cleanup_vm(test_task_id)
     
-    return success
+    return _pytest_assert_or_return(success, "Modal pip install command did not return expected output")
 
 
 def test_filesystem_persistence():
     """Test that filesystem persists between commands in the same task."""
+    _skip_unless_modal_ready_for_pytest()
+
     print("\n" + "=" * 60)
     print("TEST 5: Filesystem Persistence")
     print("=" * 60)
@@ -202,11 +236,13 @@ def test_filesystem_persistence():
     # Cleanup
     cleanup_vm(test_task_id)
     
-    return success
+    return _pytest_assert_or_return(success, "Modal filesystem persistence failed")
 
 
 def test_environment_isolation():
     """Test that different task_ids get isolated environments."""
+    _skip_unless_modal_ready_for_pytest()
+
     print("\n" + "=" * 60)
     print("TEST 6: Environment Isolation")
     print("=" * 60)
@@ -234,7 +270,7 @@ def test_environment_isolation():
     cleanup_vm(task1)
     cleanup_vm(task2)
     
-    return isolated
+    return _pytest_assert_or_return(isolated, "Modal task environments were not isolated")
 
 
 def main():

