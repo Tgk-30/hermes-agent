@@ -66,14 +66,12 @@ export default function LogsPage() {
   const [lineCount, setLineCount] = useState<(typeof LINE_COUNTS)[number]>(100);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { t } = useI18n();
 
   const fetchLogs = useCallback(() => {
-    setLoading(true);
-    setError(null);
     api
       .getLogs({ file, lines: lineCount, level, component })
       .then((resp) => {
@@ -97,6 +95,34 @@ export default function LogsPage() {
     const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
   }, [autoRefresh, fetchLogs]);
+
+  const handleFileChange = (nextFile: (typeof FILES)[number]) => {
+    if (nextFile === file) return;
+    setLoading(true);
+    setError(null);
+    setFile(nextFile);
+  };
+
+  const handleLevelChange = (nextLevel: (typeof LEVELS)[number]) => {
+    if (nextLevel === level) return;
+    setLoading(true);
+    setError(null);
+    setLevel(nextLevel);
+  };
+
+  const handleComponentChange = (nextComponent: (typeof COMPONENTS)[number]) => {
+    if (nextComponent === component) return;
+    setLoading(true);
+    setError(null);
+    setComponent(nextComponent);
+  };
+
+  const handleLineCountChange = (nextLineCount: (typeof LINE_COUNTS)[number]) => {
+    if (nextLineCount === lineCount) return;
+    setLoading(true);
+    setError(null);
+    setLineCount(nextLineCount);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -123,7 +149,16 @@ export default function LogsPage() {
               </Badge>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={fetchLogs} className="text-xs h-7">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              fetchLogs();
+            }}
+            className="text-xs h-7"
+          >
             <RefreshCw className="h-3 w-3 mr-1" />
             {t.common.refresh}
           </Button>
@@ -137,17 +172,17 @@ export default function LogsPage() {
           <div className="sm:sticky sm:top-[72px] flex flex-col gap-0.5">
             <SidebarHeading>{t.logs.file}</SidebarHeading>
             {FILES.map((f) => (
-              <SidebarItem key={f} label={f} value={f} current={file} onChange={setFile} />
+              <SidebarItem key={f} label={f} value={f} current={file} onChange={handleFileChange} />
             ))}
 
             <SidebarHeading>{t.logs.level}</SidebarHeading>
             {LEVELS.map((l) => (
-              <SidebarItem key={l} label={l} value={l} current={level} onChange={setLevel} />
+              <SidebarItem key={l} label={l} value={l} current={level} onChange={handleLevelChange} />
             ))}
 
             <SidebarHeading>{t.logs.component}</SidebarHeading>
             {COMPONENTS.map((c) => (
-              <SidebarItem key={c} label={c} value={c} current={component} onChange={setComponent} />
+              <SidebarItem key={c} label={c} value={c} current={component} onChange={handleComponentChange} />
             ))}
 
             <SidebarHeading>{t.logs.lines}</SidebarHeading>
@@ -157,7 +192,7 @@ export default function LogsPage() {
                 label={String(n)}
                 value={String(n)}
                 current={String(lineCount)}
-                onChange={(v) => setLineCount(Number(v) as (typeof LINE_COUNTS)[number])}
+                onChange={(v) => handleLineCountChange(Number(v) as (typeof LINE_COUNTS)[number])}
               />
             ))}
           </div>

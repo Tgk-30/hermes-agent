@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { sanitizeMarkdownUrl } from "@/lib/markdownUrl.js";
 
 /**
  * Lightweight markdown renderer for LLM output.
@@ -236,11 +237,15 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
             return <strong key={i} className="font-semibold"><HighlightedText text={node.content} terms={highlightTerms} /></strong>;
           case "italic":
             return <em key={i}><HighlightedText text={node.content} terms={highlightTerms} /></em>;
-          case "link":
+          case "link": {
+            const href = sanitizeMarkdownUrl(node.href);
+            if (!href) {
+              return <span key={i}>{node.text}</span>;
+            }
             return (
               <a
                 key={i}
-                href={node.href}
+                href={href}
                 target="_blank"
                 rel="noreferrer"
                 className="text-primary underline underline-offset-2 decoration-primary/30 hover:decoration-primary/60 transition-colors"
@@ -248,6 +253,7 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
                 {node.text}
               </a>
             );
+          }
           case "br":
             return <br key={i} />;
         }

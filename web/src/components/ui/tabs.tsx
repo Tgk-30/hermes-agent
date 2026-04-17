@@ -33,6 +33,7 @@ export function TabsTrigger({
   className,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean; value: string }) {
+  void value;
   return (
     <button
       type="button"

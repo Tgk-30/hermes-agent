@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +31,11 @@ const SOURCE_CONFIG: Record<string, { icon: typeof Terminal; color: string }> = 
   whatsapp: { icon: Globe, color: "text-success" },
   cron: { icon: Clock, color: "text-warning" },
 };
+
+function formatError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
 
 /** Render an FTS5 snippet with highlighted matches.
  *  The backend wraps matches in >>> and <<< delimiters. */
@@ -186,20 +192,17 @@ function SessionRow({
   onDelete: () => void;
 }) {
   const [messages, setMessages] = useState<SessionMessage[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { t } = useI18n();
 
   useEffect(() => {
-    if (isExpanded && messages === null && !loading) {
-      setLoading(true);
+    if (isExpanded && messages === null) {
       api
         .getSessionMessages(session.id)
         .then((resp) => setMessages(resp.messages))
-        .catch((err) => setError(String(err)))
-        .finally(() => setLoading(false));
+        .catch((err) => setError(String(err)));
     }
-  }, [isExpanded, session.id, messages, loading]);
+  }, [isExpanded, session.id, messages]);
 
   const sourceInfo = (session.source ? SOURCE_CONFIG[session.source] : null) ?? { icon: Globe, color: "text-muted-foreground" };
   const SourceIcon = sourceInfo.icon;
@@ -271,7 +274,7 @@ function SessionRow({
 
       {isExpanded && (
         <div className="border-t border-border bg-background/50 p-4">
-          {loading && (
+          {isExpanded && messages === null && !error && (
             <div className="flex items-center justify-center py-8">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
@@ -297,22 +300,25 @@ export default function SessionsPage() {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const { t } = useI18n();
 
   const loadSessions = useCallback((p: number) => {
-    setLoading(true);
     api
       .getSessions(PAGE_SIZE, p * PAGE_SIZE)
       .then((resp) => {
         setSessions(resp.sessions);
         setTotal(resp.total);
+        setLoadError(null);
       })
-      .catch(() => {})
+      .catch((error) => setLoadError(formatError(error)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -320,22 +326,36 @@ export default function SessionsPage() {
     loadSessions(page);
   }, [loadSessions, page]);
 
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (!value.trim()) {
+      setSearchResults(null);
+      setSearchError(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+  };
+
   // Debounced FTS search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     if (!search.trim()) {
-      setSearchResults(null);
-      setSearching(false);
       return;
     }
 
-    setSearching(true);
     debounceRef.current = setTimeout(() => {
       api
         .searchSessions(search.trim())
-        .then((resp) => setSearchResults(resp.results))
-        .catch(() => setSearchResults(null))
+        .then((resp) => {
+          setSearchResults(resp.results);
+          setSearchError(null);
+        })
+        .catch((error) => {
+          setSearchResults(null);
+          setSearchError(formatError(error));
+        })
         .finally(() => setSearching(false));
     }, 300);
 
@@ -345,13 +365,14 @@ export default function SessionsPage() {
   }, [search]);
 
   const handleDelete = async (id: string) => {
+    setDeleteError(null);
     try {
       await api.deleteSession(id);
       setSessions((prev) => prev.filter((s) => s.id !== id));
       setTotal((prev) => prev - 1);
       if (expandedId === id) setExpandedId(null);
-    } catch {
-      // ignore
+    } catch (error) {
+      setDeleteError(formatError(error));
     }
   };
 
@@ -368,6 +389,17 @@ export default function SessionsPage() {
   const filtered = searchResults
     ? sessions.filter((s) => snippetMap.has(s.id))
     : sessions;
+
+  const alerts: { message: string; detail?: string }[] = [];
+  if (loadError) {
+    alerts.push({ message: t.sessions.failedToLoad, detail: loadError });
+  }
+  if (searchError) {
+    alerts.push({ message: t.sessions.failedToSearch, detail: searchError });
+  }
+  if (deleteError) {
+    alerts.push({ message: t.sessions.failedToDelete, detail: deleteError });
+  }
 
   if (loading) {
     return (
@@ -397,14 +429,19 @@ export default function SessionsPage() {
           <Input
             placeholder={t.sessions.searchPlaceholder}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-8 pr-7 h-8 text-xs"
           />
           {search && (
             <button
               type="button"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={() => setSearch("")}
+              onClick={() => {
+                setSearch("");
+                setSearchResults(null);
+                setSearchError(null);
+                setSearching(false);
+              }}
             >
               <X className="h-3 w-3" />
             </button>
@@ -412,16 +449,42 @@ export default function SessionsPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <Clock className="h-8 w-8 mb-3 opacity-40" />
-          <p className="text-sm font-medium">
-            {search ? t.sessions.noMatch : t.sessions.noSessions}
-          </p>
-          {!search && (
-            <p className="text-xs mt-1 text-muted-foreground/60">{t.sessions.startConversation}</p>
-          )}
+      {alerts.length > 0 && (
+        <div className="border border-destructive/30 bg-destructive/[0.06] p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div className="flex min-w-0 flex-col gap-2">
+              {alerts.map((alert, index) => (
+                <div key={index}>
+                  <p className="text-sm font-medium text-destructive">{alert.message}</p>
+                  {alert.detail && (
+                    <p className="mt-0.5 text-xs text-destructive/70">{alert.detail}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      )}
+
+      {filtered.length === 0 ? (
+        loadError && !search ? (
+          <div className="flex flex-col items-center justify-center py-16 text-destructive">
+            <AlertTriangle className="mb-3 h-8 w-8 opacity-70" />
+            <p className="text-sm font-medium">{t.sessions.failedToLoad}</p>
+            <p className="mt-1 text-xs text-destructive/70">{loadError}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+            <Clock className="h-8 w-8 mb-3 opacity-40" />
+            <p className="text-sm font-medium">
+              {search ? t.sessions.noMatch : t.sessions.noSessions}
+            </p>
+            {!search && (
+              <p className="text-xs mt-1 text-muted-foreground/60">{t.sessions.startConversation}</p>
+            )}
+          </div>
+        )
       ) : (
         <>
           <div className="flex flex-col gap-1.5">
@@ -452,7 +515,11 @@ export default function SessionsPage() {
                   size="sm"
                   className="h-7 w-7 p-0"
                   disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setLoadError(null);
+                    setPage((p) => p - 1);
+                  }}
                   aria-label={t.sessions.previousPage}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -465,7 +532,11 @@ export default function SessionsPage() {
                   size="sm"
                   className="h-7 w-7 p-0"
                   disabled={(page + 1) * PAGE_SIZE >= total}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setLoadError(null);
+                    setPage((p) => p + 1);
+                  }}
                   aria-label={t.sessions.nextPage}
                 >
                   <ChevronRight className="h-4 w-4" />

@@ -154,7 +154,8 @@ export function Select({
   );
 }
 
-export function SelectOption(_props: SelectOptionProps) {
+export function SelectOption(props: SelectOptionProps) {
+  void props;
   return null;
 }
 

@@ -114,14 +114,13 @@ export default function ConfigPage() {
   // Load YAML when switching to YAML mode
   useEffect(() => {
     if (yamlMode) {
-      setYamlLoading(true);
       api
         .getConfigRaw()
         .then((resp) => setYamlText(resp.yaml))
         .catch(() => showToast(t.config.failedToLoadRaw, "error"))
         .finally(() => setYamlLoading(false));
     }
-  }, [yamlMode]);
+  }, [yamlMode, showToast, t.config.failedToLoadRaw]);
 
   /* ---- Categories ---- */
   const categories = useMemo(() => {
@@ -310,7 +309,10 @@ export default function ConfigPage() {
           <Button
             variant={yamlMode ? "default" : "outline"}
             size="sm"
-            onClick={() => setYamlMode(!yamlMode)}
+            onClick={() => {
+              if (!yamlMode) setYamlLoading(true);
+              setYamlMode(!yamlMode);
+            }}
             className="gap-1.5"
           >
             {yamlMode ? (

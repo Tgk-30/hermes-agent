@@ -19,25 +19,36 @@ interface ModelInfoCardProps {
 }
 
 export function ModelInfoCard({ currentModel, refreshKey = 0 }: ModelInfoCardProps) {
-  const [info, setInfo] = useState<ModelInfoResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const lastFetchKeyRef = useRef("");
+  const [loaded, setLoaded] = useState<{ key: string; info: ModelInfoResponse | null }>({
+    key: "",
+    info: null,
+  });
+  const lastRequestedKeyRef = useRef("");
+  const fetchKey = currentModel ? `${currentModel}:${refreshKey}` : "";
 
   useEffect(() => {
     if (!currentModel) return;
     // Re-fetch when model changes OR when refreshKey bumps (after save)
-    const fetchKey = `${currentModel}:${refreshKey}`;
-    if (fetchKey === lastFetchKeyRef.current) return;
-    lastFetchKeyRef.current = fetchKey;
-    setLoading(true);
+    if (fetchKey === lastRequestedKeyRef.current) return;
+    lastRequestedKeyRef.current = fetchKey;
+    let cancelled = false;
     api
       .getModelInfo()
-      .then(setInfo)
-      .catch(() => setInfo(null))
-      .finally(() => setLoading(false));
-  }, [currentModel, refreshKey]);
+      .then((nextInfo) => {
+        if (!cancelled) setLoaded({ key: fetchKey, info: nextInfo });
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded({ key: fetchKey, info: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentModel, fetchKey]);
 
-  if (loading) {
+  const isLoading = Boolean(currentModel) && loaded.key !== fetchKey;
+  const info = loaded.info;
+
+  if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />

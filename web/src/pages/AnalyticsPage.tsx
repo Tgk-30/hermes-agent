@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   Cpu,
@@ -234,9 +234,7 @@ export default function AnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
   const { t } = useI18n();
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
     api
       .getAnalytics(days)
       .then(setData)
@@ -244,9 +242,12 @@ export default function AnalyticsPage() {
       .finally(() => setLoading(false));
   }, [days]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const handleDaysChange = (nextDays: number) => {
+    if (nextDays === days) return;
+    setLoading(true);
+    setError(null);
+    setDays(nextDays);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -259,7 +260,7 @@ export default function AnalyticsPage() {
             variant={days === p.days ? "default" : "outline"}
             size="sm"
             className="text-xs h-7"
-            onClick={() => setDays(p.days)}
+            onClick={() => handleDaysChange(p.days)}
           >
             {p.label}
           </Button>

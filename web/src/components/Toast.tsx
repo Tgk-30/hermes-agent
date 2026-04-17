@@ -2,20 +2,32 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 export function Toast({ toast }: { toast: { message: string; type: "success" | "error" } | null }) {
-  const [visible, setVisible] = useState(false);
-  const [current, setCurrent] = useState(toast);
+  const [displayToast, setDisplayToast] = useState(toast);
+  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
     if (toast) {
-      setCurrent(toast);
-      setVisible(true);
-    } else {
-      setVisible(false);
-      const timer = setTimeout(() => setCurrent(null), 200);
+      const timer = window.setTimeout(() => {
+        setDisplayToast(toast);
+        setExiting(false);
+      }, 0);
       return () => clearTimeout(timer);
     }
-  }, [toast]);
 
+    if (!displayToast) return;
+
+    const enterExit = window.setTimeout(() => setExiting(true), 0);
+    const timer = window.setTimeout(() => {
+      setDisplayToast(null);
+      setExiting(false);
+    }, 200);
+    return () => {
+      clearTimeout(enterExit);
+      clearTimeout(timer);
+    };
+  }, [toast, displayToast]);
+
+  const current = toast ?? displayToast;
   if (!current) return null;
 
   // Portal to document.body so the toast escapes any ancestor stacking context
@@ -30,7 +42,7 @@ export function Toast({ toast }: { toast: { message: string; type: "success" | "
           : "bg-destructive/15 text-destructive border-destructive/30"
       }`}
       style={{
-        animation: visible ? "toast-in 200ms ease-out forwards" : "toast-out 200ms ease-in forwards",
+        animation: exiting ? "toast-out 200ms ease-in forwards" : "toast-in 200ms ease-out forwards",
       }}
     >
       {current.message}

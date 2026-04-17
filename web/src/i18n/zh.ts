@@ -86,6 +86,8 @@ export const zh: Translations = {
     lastUpdate: "最后更新",
     platformError: "错误",
     platformDisconnected: "已断开",
+    failedToLoadStatus: "加载状态失败",
+    failedToLoadSessions: "加载会话失败",
   },
 
   sessions: {
@@ -99,6 +101,9 @@ export const zh: Translations = {
     deleteSession: "删除会话",
     previousPage: "上一页",
     nextPage: "下一页",
+    failedToLoad: "加载会话失败",
+    failedToSearch: "搜索会话失败",
+    failedToDelete: "删除会话失败",
     roles: {
       user: "用户",
       assistant: "助手",

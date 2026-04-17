@@ -604,6 +604,7 @@ function CollapsibleUnset({
   onReveal: (key: string) => void;
   onCancelEdit: (key: string) => void;
 }) {
+  void _category;
   const [collapsed, setCollapsed] = useState(true);
   const { t } = useI18n();
 

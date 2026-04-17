@@ -89,6 +89,8 @@ export interface Translations {
     lastUpdate: string;
     platformError: string;
     platformDisconnected: string;
+    failedToLoadStatus: string;
+    failedToLoadSessions: string;
   };
 
   // ── Sessions page ──
@@ -103,6 +105,9 @@ export interface Translations {
     deleteSession: string;
     previousPage: string;
     nextPage: string;
+    failedToLoad: string;
+    failedToSearch: string;
+    failedToDelete: string;
     roles: {
       user: string;
       assistant: string;

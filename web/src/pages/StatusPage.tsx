@@ -16,22 +16,91 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/i18n";
 
+function formatError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
+
 export default function StatusPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const { t } = useI18n();
 
   useEffect(() => {
-    const load = () => {
-      api.getStatus().then(setStatus).catch(() => {});
-      api.getSessions(50).then((resp) => setSessions(resp.sessions)).catch(() => {});
+    let cancelled = false;
+
+    const load = async () => {
+      const [statusResult, sessionsResult] = await Promise.allSettled([
+        api.getStatus(),
+        api.getSessions(50),
+      ]);
+      if (cancelled) return;
+
+      if (statusResult.status === "fulfilled") {
+        setStatus(statusResult.value);
+        setStatusError(null);
+      } else {
+        setStatusError(formatError(statusResult.reason));
+      }
+
+      if (sessionsResult.status === "fulfilled") {
+        setSessions(sessionsResult.value.sessions);
+        setSessionsError(null);
+      } else {
+        setSessionsError(formatError(sessionsResult.reason));
+      }
     };
-    load();
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
+
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
-  if (!status) {
+  const loadAlerts: { message: string; detail?: string }[] = [];
+  if (statusError) {
+    loadAlerts.push({
+      message: t.status.failedToLoadStatus,
+      detail: statusError,
+    });
+  }
+  if (sessionsError) {
+    loadAlerts.push({
+      message: t.status.failedToLoadSessions,
+      detail: sessionsError,
+    });
+  }
+
+  const activeSessions = sessions.filter((s) => s.is_active);
+  const recentSessions = sessions.filter((s) => !s.is_active).slice(0, 5);
+
+  if (!status && sessions.length === 0) {
+    if (loadAlerts.length > 0) {
+      return (
+        <div className="border border-destructive/30 bg-destructive/[0.06] p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div className="flex min-w-0 flex-col gap-2">
+              {loadAlerts.map((alert, index) => (
+                <div key={index}>
+                  <p className="text-sm font-medium text-destructive">{alert.message}</p>
+                  {alert.detail && (
+                    <p className="mt-0.5 text-xs text-destructive/70">{alert.detail}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center justify-center py-24">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -52,55 +121,55 @@ export default function StatusPage() {
     stopped: { badge: "outline", label: t.status.stopped },
   };
 
-  function gatewayValue(): string {
-    if (status!.gateway_running && status!.gateway_health_url) return status!.gateway_health_url;
-    if (status!.gateway_running && status!.gateway_pid) return `${t.status.pid} ${status!.gateway_pid}`;
-    if (status!.gateway_running) return t.status.runningRemote;
-    if (status!.gateway_state === "startup_failed") return t.status.startFailed;
+  function gatewayValue(currentStatus: StatusResponse): string {
+    if (currentStatus.gateway_running && currentStatus.gateway_health_url) return currentStatus.gateway_health_url;
+    if (currentStatus.gateway_running && currentStatus.gateway_pid) return `${t.status.pid} ${currentStatus.gateway_pid}`;
+    if (currentStatus.gateway_running) return t.status.runningRemote;
+    if (currentStatus.gateway_state === "startup_failed") return t.status.startFailed;
     return t.status.notRunning;
   }
 
-  function gatewayBadge() {
-    const info = status!.gateway_state ? GATEWAY_STATE_DISPLAY[status!.gateway_state] : null;
+  function gatewayBadge(currentStatus: StatusResponse) {
+    const info = currentStatus.gateway_state ? GATEWAY_STATE_DISPLAY[currentStatus.gateway_state] : null;
     if (info) return info;
-    return status!.gateway_running
+    return currentStatus.gateway_running
       ? { badge: "success" as const, label: t.status.running }
       : { badge: "outline" as const, label: t.common.off };
   }
 
-  const gwBadge = gatewayBadge();
+  const gwBadge = status ? gatewayBadge(status) : null;
 
-  const items = [
-    {
-      icon: Cpu,
-      label: t.status.agent,
-      value: `v${status.version}`,
-      badgeText: t.common.live,
-      badgeVariant: "success" as const,
-    },
-    {
-      icon: Radio,
-      label: t.status.gateway,
-      value: gatewayValue(),
-      badgeText: gwBadge.label,
-      badgeVariant: gwBadge.badge,
-    },
-    {
-      icon: Activity,
-      label: t.status.activeSessions,
-      value: status.active_sessions > 0 ? `${status.active_sessions} ${t.status.running.toLowerCase()}` : t.status.noneRunning,
-      badgeText: status.active_sessions > 0 ? t.common.live : t.common.off,
-      badgeVariant: (status.active_sessions > 0 ? "success" : "outline") as "success" | "outline",
-    },
-  ];
+  const items = status && gwBadge
+    ? [
+        {
+          icon: Cpu,
+          label: t.status.agent,
+          value: `v${status.version}`,
+          badgeText: t.common.live,
+          badgeVariant: "success" as const,
+        },
+        {
+          icon: Radio,
+          label: t.status.gateway,
+          value: gatewayValue(status),
+          badgeText: gwBadge.label,
+          badgeVariant: gwBadge.badge,
+        },
+        {
+          icon: Activity,
+          label: t.status.activeSessions,
+          value: status.active_sessions > 0 ? `${status.active_sessions} ${t.status.running.toLowerCase()}` : t.status.noneRunning,
+          badgeText: status.active_sessions > 0 ? t.common.live : t.common.off,
+          badgeVariant: (status.active_sessions > 0 ? "success" : "outline") as "success" | "outline",
+        },
+      ]
+    : [];
 
-  const platforms = Object.entries(status.gateway_platforms ?? {});
-  const activeSessions = sessions.filter((s) => s.is_active);
-  const recentSessions = sessions.filter((s) => !s.is_active).slice(0, 5);
+  const platforms = status ? Object.entries(status.gateway_platforms ?? {}) : [];
 
   // Collect alerts that need attention
-  const alerts: { message: string; detail?: string }[] = [];
-  if (status.gateway_state === "startup_failed") {
+  const alerts: { message: string; detail?: string }[] = [...loadAlerts];
+  if (status?.gateway_state === "startup_failed") {
     alerts.push({
       message: t.status.gatewayFailedToStart,
       detail: status.gateway_exit_reason ?? undefined,
@@ -136,29 +205,31 @@ export default function StatusPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {items.map(({ icon: Icon, label, value, badgeText, badgeVariant }) => (
-          <Card key={label} className="min-w-0 overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">{label}</CardTitle>
-              <Icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
+      {items.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          {items.map(({ icon: Icon, label, value, badgeText, badgeVariant }) => (
+            <Card key={label} className="min-w-0 overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">{label}</CardTitle>
+                <Icon className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
 
-            <CardContent>
-              <div className="text-2xl font-bold font-display truncate" title={value}>{value}</div>
+              <CardContent>
+                <div className="text-2xl font-bold font-display truncate" title={value}>{value}</div>
 
-              {badgeText && (
-                <Badge variant={badgeVariant} className="mt-2">
-                  {badgeVariant === "success" && (
-                    <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-                  )}
-                  {badgeText}
-                </Badge>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                {badgeText && (
+                  <Badge variant={badgeVariant} className="mt-2">
+                    {badgeVariant === "success" && (
+                      <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                    )}
+                    {badgeText}
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {platforms.length > 0 && (
         <PlatformsCard platforms={platforms} platformStateBadge={PLATFORM_STATE_BADGE} />

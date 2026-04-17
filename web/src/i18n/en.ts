@@ -86,6 +86,8 @@ export const en: Translations = {
     lastUpdate: "Last update",
     platformError: "error",
     platformDisconnected: "disconnected",
+    failedToLoadStatus: "Failed to load status",
+    failedToLoadSessions: "Failed to load sessions",
   },
 
   sessions: {
@@ -99,6 +101,9 @@ export const en: Translations = {
     deleteSession: "Delete session",
     previousPage: "Previous page",
     nextPage: "Next page",
+    failedToLoad: "Failed to load sessions",
+    failedToSearch: "Failed to search sessions",
+    failedToDelete: "Failed to delete session",
     roles: {
       user: "User",
       assistant: "Assistant",
