@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from hermes_constants import get_hermes_home
 from hermes_cli.config import load_config
+from hermes_cli.maintenance import cleanup_retention_artifacts, cleanup_stale_cron_tick_locks
 from hermes_time import now as _hermes_now
 
 logger = logging.getLogger(__name__)
@@ -922,6 +923,9 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         Number of jobs executed (0 if another tick is already running)
     """
     _LOCK_DIR.mkdir(parents=True, exist_ok=True)
+    stale_lock_count = cleanup_stale_cron_tick_locks(_LOCK_DIR)
+    if verbose and stale_lock_count:
+        logger.info("Cleaned %d stale cron gateway lock(s)", stale_lock_count)
 
     # Cross-platform file locking: fcntl on Unix, msvcrt on Windows
     lock_fd = None
@@ -938,6 +942,7 @@ def tick(verbose: bool = True, adapters=None, loop=None) -> int:
         return 0
 
     try:
+        cleanup_retention_artifacts(_hermes_home)
         due_jobs = get_due_jobs()
 
         if verbose and not due_jobs:

@@ -46,6 +46,7 @@ from atroposlib.type_definitions import Item
 
 from environments.agent_loop import AgentResult
 from environments.hermes_base_env import HermesAgentBaseEnv, HermesAgentEnvConfig
+from environments.shell_utils import quote_shell_path
 from environments.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
@@ -186,7 +187,7 @@ class TerminalTestEnv(HermesAgentBaseEnv):
             0.5 = expected content is present but has extra stuff
             0.0 = file doesn't exist or content doesn't match
         """
-        verify_result = ctx.terminal(f"cat {item['verify_path']}")
+        verify_result = ctx.terminal(f"cat {quote_shell_path(item['verify_path'])}")
 
         # File doesn't exist or can't be read
         if verify_result["exit_code"] != 0:

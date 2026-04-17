@@ -48,6 +48,7 @@ from atroposlib.type_definitions import Item
 
 from environments.agent_loop import AgentResult
 from environments.hermes_base_env import HermesAgentBaseEnv, HermesAgentEnvConfig
+from environments.shell_utils import build_python_script_command
 from environments.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
@@ -174,9 +175,15 @@ class HermesSweEnv(HermesAgentBaseEnv):
         test_code = item.get("test", item.get("test_code", item.get("tests", "")))
 
         if test_code:
-            # Run the test in the model's sandbox
+            # Run the test in the model's sandbox without interpolating dataset
+            # text directly into the shell command.
             test_result = ctx.terminal(
-                f'cd /workspace && python3 -c "{test_code}"', timeout=60
+                build_python_script_command(
+                    test_code,
+                    script_path="/tmp/hermes_swe_test.py",
+                    cwd="/workspace",
+                ),
+                timeout=60,
             )
 
             if test_result["exit_code"] == 0:

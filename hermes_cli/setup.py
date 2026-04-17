@@ -2005,54 +2005,6 @@ def _setup_wecom_callback():
     _gw_setup()
 
 
-def _setup_qqbot():
-    """Configure QQ Bot gateway."""
-    print_header("QQ Bot")
-    existing = get_env_value("QQ_APP_ID")
-    if existing:
-        print_info("QQ Bot: already configured")
-        if not prompt_yes_no("Reconfigure QQ Bot?", False):
-            return
-
-    print_info("Connects Hermes to QQ via the Official QQ Bot API (v2).")
-    print_info("   Requires a QQ Bot application at q.qq.com")
-    print_info("   Reference: https://bot.q.qq.com/wiki/develop/api-v2/")
-    print()
-
-    app_id = prompt("QQ Bot App ID")
-    if not app_id:
-        print_warning("App ID is required — skipping QQ Bot setup")
-        return
-    save_env_value("QQ_APP_ID", app_id.strip())
-
-    client_secret = prompt("QQ Bot App Secret", password=True)
-    if not client_secret:
-        print_warning("App Secret is required — skipping QQ Bot setup")
-        return
-    save_env_value("QQ_CLIENT_SECRET", client_secret)
-    print_success("QQ Bot credentials saved")
-
-    print()
-    print_info("🔒 Security: Restrict who can DM your bot")
-    print_info("   Use QQ user OpenIDs (found in event payloads)")
-    print()
-    allowed_users = prompt("Allowed user OpenIDs (comma-separated, leave empty for open access)")
-    if allowed_users:
-        save_env_value("QQ_ALLOWED_USERS", allowed_users.replace(" ", ""))
-        print_success("QQ Bot allowlist configured")
-    else:
-        print_info("⚠️  No allowlist set — anyone can DM the bot!")
-
-    print()
-    print_info("📬 Home Channel: OpenID for cron job delivery and notifications.")
-    home_channel = prompt("Home channel OpenID (leave empty to set later)")
-    if home_channel:
-        save_env_value("QQ_HOME_CHANNEL", home_channel)
-
-    print()
-    print_success("QQ Bot configured!")
-
-
 def _setup_bluebubbles():
     """Configure BlueBubbles iMessage gateway."""
     print_header("BlueBubbles (iMessage)")

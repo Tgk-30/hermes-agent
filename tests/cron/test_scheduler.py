@@ -7,9 +7,100 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from cron.scheduler import _resolve_origin, _resolve_delivery_target, _deliver_result, _send_media_via_adapter, run_job, SILENT_MARKER, _build_job_prompt
+from cron.scheduler import (
+    _resolve_origin,
+    _resolve_delivery_target,
+    _deliver_result,
+    _send_media_via_adapter,
+    run_job,
+    SILENT_MARKER,
+    _build_job_prompt,
+    cleanup_stale_cron_tick_locks,
+)
 from tools.env_passthrough import clear_env_passthrough
 from tools.credential_files import clear_credential_files
+
+
+@pytest.fixture(autouse=True)
+def _isolate_tick_lock(tmp_path, monkeypatch):
+    """Keep scheduler unit tests away from a live gateway's real cron lock."""
+    import cron.scheduler as scheduler
+
+    lock_dir = tmp_path / "cron-locks"
+    monkeypatch.setattr(scheduler, "_LOCK_DIR", lock_dir, raising=False)
+    monkeypatch.setattr(scheduler, "_LOCK_FILE", lock_dir / ".tick.lock", raising=False)
+    monkeypatch.setattr(
+        scheduler,
+        "cleanup_retention_artifacts",
+        lambda *args, **kwargs: {
+            "request_dumps": 0,
+            "session_logs": 0,
+            "session_transcripts": 0,
+            "rotated_logs": 0,
+            "cron_outputs": 0,
+            "memory_artifacts": 0,
+            "sqlite_checkpoints": 0,
+            "sqlite_vacuums": 0,
+            "total": 0,
+        },
+        raising=False,
+    )
+
+
+class TestStaleCronTickLockCleanup:
+    def test_removes_stale_gateway_lock_files(self, tmp_path):
+        stale_lock = tmp_path / ".tick.gw123.lock"
+        stale_lock.write_text("")
+
+        removed = cleanup_stale_cron_tick_locks(tmp_path)
+
+        assert removed == 1
+        assert not stale_lock.exists()
+
+    def test_tick_invokes_stale_lock_cleanup(self, tmp_path, monkeypatch):
+        import cron.scheduler as scheduler
+
+        monkeypatch.setattr(scheduler, "_LOCK_DIR", tmp_path, raising=False)
+        monkeypatch.setattr(scheduler, "_LOCK_FILE", tmp_path / ".tick.lock", raising=False)
+        monkeypatch.setattr(scheduler, "get_due_jobs", lambda: [], raising=False)
+        monkeypatch.setattr(
+            scheduler,
+            "cleanup_retention_artifacts",
+            lambda *args, **kwargs: {"total": 0},
+            raising=False,
+        )
+
+        stale_lock = tmp_path / ".tick.gw789.lock"
+        stale_lock.write_text("")
+
+        executed = scheduler.tick(verbose=False)
+
+        assert executed == 0
+        assert not stale_lock.exists()
+
+    def test_keeps_live_gateway_lock_files(self, tmp_path):
+        import cron.scheduler as scheduler
+
+        if scheduler.fcntl is None:
+            pytest.skip("fcntl is required for the live lock test")
+
+        live_lock = tmp_path / ".tick.gw456.lock"
+        live_lock.write_text("")
+
+        lock_fd = open(live_lock, "a+")
+        try:
+            scheduler.fcntl.flock(lock_fd, scheduler.fcntl.LOCK_EX | scheduler.fcntl.LOCK_NB)
+
+            removed = cleanup_stale_cron_tick_locks(tmp_path)
+
+            assert removed == 0
+            assert live_lock.exists()
+        finally:
+            try:
+                if scheduler.fcntl is not None:
+                    scheduler.fcntl.flock(lock_fd, scheduler.fcntl.LOCK_UN)
+            finally:
+                lock_fd.close()
 
 
 class TestResolveOrigin:
