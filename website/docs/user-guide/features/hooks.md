@@ -241,6 +241,8 @@ def register(ctx):
 | [`post_tool_call`](#post_tool_call) | After any tool returns | ignored |
 | [`pre_llm_call`](#pre_llm_call) | Once per turn, before the tool-calling loop | context injection |
 | [`post_llm_call`](#post_llm_call) | Once per turn, after the tool-calling loop | ignored |
+| [`pre_api_request`](#pre_api_request) | Before each HTTP request to the LLM provider | ignored |
+| [`post_api_request`](#post_api_request) | After each HTTP response from the LLM provider | ignored |
 | [`on_session_start`](#on_session_start) | New session created (first turn only) | ignored |
 | [`on_session_end`](#on_session_end) | Session ends | ignored |
 
@@ -487,6 +489,117 @@ def log_response_length(session_id, assistant_response, model, **kwargs):
 
 def register(ctx):
     ctx.register_hook("post_llm_call", log_response_length)
+```
+
+---
+
+### `pre_api_request`
+
+Fires **before each LLM provider request** is sent. Use this hook for request tracing, token accounting, budget checks, or provider-specific observability.
+
+**Callback signature:**
+
+```python
+def my_callback(**kwargs):
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `task_id` | `str` | Current task ID |
+| `session_id` | `str` | Current session ID |
+| `platform` | `str` | Origin platform |
+| `model` | `str` | Runtime model name |
+| `provider` | `str` | Runtime provider name |
+| `base_url` | `str` | Provider base URL |
+| `api_mode` | `str` | Runtime API mode |
+| `api_call_count` | `int` | 1-based provider request count in this turn |
+| `message_count` | `int` | Number of messages included in the request |
+| `tool_count` | `int` | Number of tools exposed to the model |
+| `approx_input_tokens` | `int` | Approximate request input tokens |
+| `request_char_count` | `int` | Approximate request character count |
+| `max_tokens` | `int` | Configured max token budget |
+
+**Fires:** In the API client path, immediately before the outbound provider request is sent.
+
+**Return value:** Ignored.
+
+**Use cases:** Request logging, metrics, soft budget checks, provider audit events.
+
+**Example — log request size:**
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+def record_request(**kwargs):
+    logger.info(
+        "API_REQUEST provider=%s model=%s call=%s messages=%s chars=%s",
+        kwargs.get("provider"),
+        kwargs.get("model"),
+        kwargs.get("api_call_count"),
+        kwargs.get("message_count"),
+        kwargs.get("request_char_count"),
+    )
+
+def register(ctx):
+    ctx.register_hook("pre_api_request", record_request)
+```
+
+---
+
+### `post_api_request`
+
+Fires **after each LLM provider response** is received and normalized. Use this hook for response logging, latency tracking, token usage accounting, and provider health checks.
+
+**Callback signature:**
+
+```python
+def my_callback(**kwargs):
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `task_id` | `str` | Current task ID |
+| `session_id` | `str` | Current session ID |
+| `platform` | `str` | Origin platform |
+| `model` | `str` | Runtime model name |
+| `provider` | `str` | Runtime provider name |
+| `base_url` | `str` | Provider base URL |
+| `api_mode` | `str` | Runtime API mode |
+| `api_call_count` | `int` | 1-based provider request count in this turn |
+| `api_duration` | `float` | Provider request duration in seconds |
+| `finish_reason` | `str` | Provider finish reason when available |
+| `message_count` | `int` | Number of request messages |
+| `response_model` | `str` | Response model name when available |
+| `usage` | `dict` | Token usage summary when available |
+| `assistant_content_chars` | `int` | Assistant text length |
+| `assistant_tool_call_count` | `int` | Number of tool calls returned |
+
+**Fires:** In the API client path, immediately after the provider response is received and normalized.
+
+**Return value:** Ignored.
+
+**Use cases:** Response logging, latency metrics, failure alerts, provider-specific audits.
+
+**Example — record response status:**
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+def record_response(**kwargs):
+    logger.info(
+        "API_RESPONSE provider=%s call=%s duration=%s finish=%s",
+        kwargs.get("provider"),
+        kwargs.get("api_call_count"),
+        kwargs.get("api_duration"),
+        kwargs.get("finish_reason"),
+    )
+
+def register(ctx):
+    ctx.register_hook("post_api_request", record_response)
 ```
 
 ---
