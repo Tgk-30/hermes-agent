@@ -56,7 +56,7 @@ def _run_boot_agent(content: str) -> None:
         )
         result = agent.run_conversation(prompt)
         response = result.get("final_response", "")
-        if response and "[SILENT]" not in response:
+        if response and response.strip() != "[SILENT]":
             logger.info("boot-md completed: %s", response[:200])
         else:
             logger.info("boot-md completed (nothing to report)")

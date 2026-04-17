@@ -6,6 +6,19 @@ from unittest.mock import MagicMock
 
 discord = pytest.importorskip("discord")
 
+_MESSAGE_TYPE_NAMES = (
+    "default",
+    "reply",
+    "channel_name_change",
+    "pins_add",
+    "new_member",
+    "premium_guild_subscription",
+    "recipient_add",
+)
+for _idx, _name in enumerate(_MESSAGE_TYPE_NAMES):
+    if not hasattr(discord.MessageType, _name):
+        setattr(discord.MessageType, _name, object())
+
 
 def _make_author(*, bot: bool = False, is_self: bool = False):
     """Create a mock Discord author."""

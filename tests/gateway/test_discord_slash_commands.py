@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+import importlib
 import sys
 
 import pytest
@@ -18,7 +19,26 @@ def _ensure_discord_mock():
     discord_mod.DMChannel = type("DMChannel", (), {})
     discord_mod.Thread = type("Thread", (), {})
     discord_mod.ForumChannel = type("ForumChannel", (), {})
+    discord_mod.TextChannel = type("TextChannel", (), {})
+    discord_mod.MessageType = SimpleNamespace(default=0, reply=1)
     discord_mod.Interaction = object
+    discord_mod.SelectOption = lambda **kwargs: SimpleNamespace(**kwargs)
+    discord_mod.ButtonStyle = SimpleNamespace(success=1, primary=2, secondary=2, danger=3, green=1, grey=2, blurple=2, red=3)
+    discord_mod.Color = SimpleNamespace(
+        orange=lambda: 1,
+        green=lambda: 2,
+        blue=lambda: 3,
+        red=lambda: 4,
+        purple=lambda: 5,
+        gold=lambda: 6,
+        greyple=lambda: 7,
+    )
+    discord_mod.Embed = MagicMock
+    discord_mod.http = SimpleNamespace(Route=MagicMock)
+    discord_mod.opus = SimpleNamespace(is_loaded=lambda: True, load_opus=lambda *_: None, Decoder=MagicMock)
+    discord_mod.utils = SimpleNamespace(MISSING=object())
+    discord_mod.FFmpegPCMAudio = MagicMock
+    discord_mod.PCMVolumeTransformer = MagicMock
 
     # Lightweight mock for app_commands.Group and Command used by
     # _register_skill_group.
@@ -49,18 +69,27 @@ def _ensure_discord_mock():
         Command=_FakeCommand,
     )
 
+    discord_mod.ui = SimpleNamespace(
+        View=object,
+        Select=object,
+        Button=object,
+        button=lambda *a, **k: (lambda fn: fn),
+    )
+
     ext_mod = MagicMock()
     commands_mod = MagicMock()
     commands_mod.Bot = MagicMock
     ext_mod.commands = commands_mod
 
-    sys.modules.setdefault("discord", discord_mod)
-    sys.modules.setdefault("discord.ext", ext_mod)
-    sys.modules.setdefault("discord.ext.commands", commands_mod)
+    sys.modules["discord"] = discord_mod
+    sys.modules["discord.ext"] = ext_mod
+    sys.modules["discord.ext.commands"] = commands_mod
 
 
 _ensure_discord_mock()
 
+import gateway.platforms.discord as discord_platform  # noqa: E402
+discord_platform = importlib.reload(discord_platform)
 from gateway.platforms.discord import DiscordAdapter  # noqa: E402
 
 
@@ -671,4 +700,3 @@ def test_register_skill_group_handler_dispatches_command(adapter):
     assert gif_cmd.callback is not None
     # The callback name should reflect the skill
     assert "gif_search" in gif_cmd.callback.__name__
-

@@ -27,6 +27,7 @@ import time
 from contextvars import copy_context
 from pathlib import Path
 from datetime import datetime
+from contextlib import suppress
 from typing import Dict, Optional, Any, List
 
 # ---------------------------------------------------------------------------
@@ -3158,11 +3159,29 @@ class GatewayRunner:
                                 stdout=asyncio.subprocess.PIPE,
                                 stderr=asyncio.subprocess.PIPE,
                             )
-                            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+                            communicate_task = asyncio.create_task(proc.communicate())
+                            try:
+                                stdout, stderr = await asyncio.wait_for(communicate_task, timeout=30)
+                            except asyncio.TimeoutError:
+                                communicate_task.cancel()
+                                with suppress(asyncio.CancelledError):
+                                    await communicate_task
+                                if proc.returncode is None:
+                                    proc.kill()
+                                    with suppress(ProcessLookupError):
+                                        await proc.wait()
+                                return "Quick command timed out (30s)."
+                            except asyncio.CancelledError:
+                                communicate_task.cancel()
+                                with suppress(asyncio.CancelledError):
+                                    await communicate_task
+                                if proc.returncode is None:
+                                    proc.kill()
+                                    with suppress(ProcessLookupError):
+                                        await proc.wait()
+                                raise
                             output = (stdout or stderr).decode().strip()
                             return output if output else "Command returned no output."
-                        except asyncio.TimeoutError:
-                            return "Quick command timed out (30s)."
                         except Exception as e:
                             return f"Quick command error: {e}"
                     else:

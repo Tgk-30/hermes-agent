@@ -17,6 +17,8 @@ Individual test files may still call their own ``_ensure_telegram_mock``
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 
 def _ensure_telegram_mock() -> None:
     """Install a comprehensive telegram mock in sys.modules.
@@ -145,3 +147,24 @@ def _ensure_discord_mock() -> None:
 # Run at collection time — before any test file's module-level imports.
 _ensure_telegram_mock()
 _ensure_discord_mock()
+
+
+_DISCORD_ROUTING_ENV_VARS = (
+    "DISCORD_ALLOWED_CHANNELS",
+    "DISCORD_AUTO_THREAD",
+    "DISCORD_FREE_RESPONSE_CHANNELS",
+    "DISCORD_IGNORED_CHANNELS",
+    "DISCORD_NO_THREAD_CHANNELS",
+    "DISCORD_REQUIRE_MENTION",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_discord_routing_env(request, monkeypatch):
+    """Clear host Discord routing env so tests only use values they set explicitly."""
+    module_name = getattr(getattr(request, "module", None), "__name__", "")
+    if "test_discord" not in module_name:
+        return
+
+    for env_var in _DISCORD_ROUTING_ENV_VARS:
+        monkeypatch.delenv(env_var, raising=False)

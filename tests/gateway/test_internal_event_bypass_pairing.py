@@ -19,6 +19,14 @@ from gateway.run import GatewayRunner
 from gateway.session import SessionSource
 
 
+@pytest.fixture(autouse=True)
+def _isolate_pairing_store(tmp_path, monkeypatch):
+    """Keep pairing rate-limit/pending files out of the real Hermes home."""
+    import gateway.pairing as pairing
+
+    monkeypatch.setattr(pairing, "PAIRING_DIR", tmp_path / "pairing")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

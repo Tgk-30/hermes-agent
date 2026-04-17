@@ -51,8 +51,8 @@ def _kill_port_process(port: int) -> None:
                                 ["taskkill", "/PID", parts[4], "/F"],
                                 capture_output=True, timeout=5,
                             )
-                        except subprocess.SubprocessError:
-                            pass
+                        except subprocess.SubprocessError as exc:
+                            logger.warning("Failed to terminate process on port %s: %s", port, exc)
         else:
             result = subprocess.run(
                 ["fuser", f"{port}/tcp"],
@@ -63,8 +63,8 @@ def _kill_port_process(port: int) -> None:
                     ["fuser", "-k", f"{port}/tcp"],
                     capture_output=True, timeout=5,
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to inspect or clear port %s: %s", port, exc)
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -146,6 +146,26 @@ class WhatsAppAdapter(BasePlatformAdapter):
         self._bridge_log: Optional[Path] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._http_session: Optional["aiohttp.ClientSession"] = None
+
+    @staticmethod
+    def _start_poll_task(coro):
+        """Schedule the poll coroutine and close it if no real task owns it.
+
+        Tests patch ``asyncio.create_task`` with lightweight doubles. Some of
+        those doubles return a sentinel instead of an actual ``Task`` and leave
+        the coroutine object unconsumed, which would otherwise warn at teardown.
+        """
+        try:
+            task = asyncio.create_task(coro)
+        except Exception:
+            if hasattr(coro, "close"):
+                coro.close()
+            raise
+
+        if not isinstance(task, asyncio.Task) and hasattr(coro, "close"):
+            coro.close()
+
+        return task
 
     def _whatsapp_require_mention(self) -> bool:
         configured = self.config.extra.get("require_mention")
@@ -336,7 +356,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 self._mark_connected()
                                 self._bridge_process = None  # Not managed by us
                                 self._http_session = aiohttp.ClientSession()
-                                self._poll_task = asyncio.create_task(self._poll_messages())
+                                self._poll_task = self._start_poll_task(self._poll_messages())
                                 return True
                             else:
                                 print(f"[{self.name}] Bridge found but not connected (status: {bridge_status}), restarting")
@@ -445,7 +465,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             self._http_session = aiohttp.ClientSession()
 
             # Start message polling task
-            self._poll_task = asyncio.create_task(self._poll_messages())
+            self._poll_task = self._start_poll_task(self._poll_messages())
             
             self._mark_connected()
             print(f"[{self.name}] Bridge started on port {self._bridge_port}")

@@ -202,6 +202,14 @@ class WeComAdapter(BasePlatformAdapter):
             self._set_fatal_error("wecom_missing_credentials", message, retryable=True)
             logger.warning("[%s] %s", self.name, message)
             return False
+        if not self._ws_url.lower().startswith("wss://"):
+            message = (
+                "WeCom startup failed: websocket_url must use wss:// so bot credentials "
+                "are never sent over plaintext WebSocket transport"
+            )
+            self._set_fatal_error("wecom_insecure_websocket", message, retryable=False)
+            logger.error("[%s] %s (got %s)", self.name, message, self._ws_url)
+            return False
 
         try:
             self._http_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)

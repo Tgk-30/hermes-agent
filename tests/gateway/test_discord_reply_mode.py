@@ -8,6 +8,7 @@ Covers the threading behavior control for multi-chunk replies:
 Also covers reply_to_text extraction from incoming messages.
 """
 import os
+import importlib
 import sys
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -30,15 +31,39 @@ def _ensure_discord_mock():
     discord_mod.DMChannel = type("DMChannel", (), {})
     discord_mod.Thread = type("Thread", (), {})
     discord_mod.ForumChannel = type("ForumChannel", (), {})
-    discord_mod.ui = SimpleNamespace(View=object, button=lambda *a, **k: (lambda fn: fn), Button=object)
+    discord_mod.TextChannel = type("TextChannel", (), {})
+    discord_mod.MessageType = SimpleNamespace(default=0, reply=1)
+    discord_mod.ui = SimpleNamespace(
+        View=object,
+        Select=object,
+        Button=object,
+        button=lambda *a, **k: (lambda fn: fn),
+    )
+    discord_mod.SelectOption = lambda **kwargs: SimpleNamespace(**kwargs)
     discord_mod.ButtonStyle = SimpleNamespace(success=1, primary=2, secondary=2, danger=3, green=1, grey=2, blurple=2, red=3)
-    discord_mod.Color = SimpleNamespace(orange=lambda: 1, green=lambda: 2, blue=lambda: 3, red=lambda: 4, purple=lambda: 5)
+    discord_mod.Color = SimpleNamespace(
+        orange=lambda: 1,
+        green=lambda: 2,
+        blue=lambda: 3,
+        red=lambda: 4,
+        purple=lambda: 5,
+        gold=lambda: 6,
+        greyple=lambda: 7,
+    )
     discord_mod.Interaction = object
     discord_mod.Embed = MagicMock
+    discord_mod.http = SimpleNamespace(Route=MagicMock)
+    discord_mod.opus = SimpleNamespace(is_loaded=lambda: True, load_opus=lambda *_: None, Decoder=MagicMock)
+    discord_mod.utils = SimpleNamespace(MISSING=object())
+    discord_mod.FFmpegPCMAudio = MagicMock
+    discord_mod.PCMVolumeTransformer = MagicMock
+    discord_mod.Forbidden = type("Forbidden", (Exception,), {})
     discord_mod.app_commands = SimpleNamespace(
         describe=lambda **kwargs: (lambda fn: fn),
         choices=lambda **kwargs: (lambda fn: fn),
         Choice=lambda **kwargs: SimpleNamespace(**kwargs),
+        Group=MagicMock,
+        Command=MagicMock,
     )
 
     ext_mod = MagicMock()
@@ -46,13 +71,14 @@ def _ensure_discord_mock():
     commands_mod.Bot = MagicMock
     ext_mod.commands = commands_mod
 
-    sys.modules.setdefault("discord", discord_mod)
-    sys.modules.setdefault("discord.ext", ext_mod)
-    sys.modules.setdefault("discord.ext.commands", commands_mod)
+    sys.modules["discord"] = discord_mod
+    sys.modules["discord.ext"] = ext_mod
+    sys.modules["discord.ext.commands"] = commands_mod
 
 
 _ensure_discord_mock()
-
+import gateway.platforms.discord as discord_platform  # noqa: E402
+discord_platform = importlib.reload(discord_platform)
 from gateway.platforms.discord import DiscordAdapter  # noqa: E402
 
 
@@ -320,8 +346,18 @@ def _make_message(*, content: str = "hi", reference=None):
 @pytest.fixture
 def reply_text_adapter(monkeypatch):
     """DiscordAdapter wired for _handle_message → handle_message capture."""
+    import gateway.platforms.discord as discord_platform
+
+    if discord_platform.discord is None:
+        _ensure_discord_mock()
+        if sys.modules.get("gateway.platforms.discord") is not discord_platform:
+            sys.modules["gateway.platforms.discord"] = discord_platform
+        discord_platform = importlib.reload(discord_platform)
+
+    monkeypatch.setattr(discord_platform.discord, "DMChannel", FakeDMChannel, raising=False)
+
     config = PlatformConfig(enabled=True, token="fake-token")
-    adapter = DiscordAdapter(config)
+    adapter = discord_platform.DiscordAdapter(config)
     adapter._client = SimpleNamespace(user=SimpleNamespace(id=999))
     adapter._text_batch_delay_seconds = 0
     adapter.handle_message = AsyncMock()

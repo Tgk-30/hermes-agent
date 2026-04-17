@@ -1101,8 +1101,10 @@ class TestMatrixPasswordLoginDeviceId:
     """MATRIX_DEVICE_ID should be passed to mautrix Client even with password login."""
 
     @pytest.mark.asyncio
-    async def test_password_login_uses_device_id(self):
+    async def test_password_login_uses_device_id(self, monkeypatch):
         from gateway.platforms.matrix import MatrixAdapter
+
+        monkeypatch.delenv("MATRIX_ACCESS_TOKEN", raising=False)
 
         config = PlatformConfig(
             enabled=True,
@@ -1961,3 +1963,4 @@ class TestMatrixPresence:
         self.adapter._client = None
         result = await self.adapter.set_presence("online")
         assert result is False
+

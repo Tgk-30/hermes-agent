@@ -1585,6 +1585,235 @@ class DiscordAdapter(BasePlatformAdapter):
             logger.error("[%s] Failed to get chat info for %s: %s", self.name, chat_id, e, exc_info=True)
             return {"name": str(chat_id), "type": "dm", "error": str(e)}
 
+    def _channel_type_label(self, channel: Any) -> str:
+        """Best-effort normalization for a Discord channel type."""
+        channel_type = getattr(channel, "type", None)
+        type_value = getattr(channel_type, "value", channel_type)
+        cls_name = channel.__class__.__name__.lower()
+
+        if isinstance(channel, getattr(discord, "Thread", ())):
+            return "thread"
+        if type_value == 11 or "thread" in cls_name:
+            return "thread"
+        if type_value == 2 or "voice" in cls_name:
+            return "voice"
+        if type_value == 4 or "category" in cls_name:
+            return "category"
+        if type_value == 15 or "forum" in cls_name:
+            return "forum"
+        if type_value == 1 or "dm" in cls_name:
+            return "dm"
+        return "channel"
+
+    def _normalize_admin_message(self, message: Any) -> Dict[str, Any]:
+        """Normalize a Discord message for admin/history tooling."""
+        author = getattr(message, "author", None)
+        attachments = []
+        for att in getattr(message, "attachments", []) or []:
+            attachments.append({
+                "id": str(getattr(att, "id", "")) if getattr(att, "id", None) is not None else None,
+                "filename": getattr(att, "filename", None),
+                "url": getattr(att, "url", None),
+            })
+
+        reference = getattr(message, "reference", None)
+        reply_to = getattr(reference, "message_id", None) if reference else None
+
+        created_at = getattr(message, "created_at", None)
+        if created_at and hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+
+        return {
+            "id": str(getattr(message, "id", "")),
+            "author": getattr(author, "display_name", None) or getattr(author, "name", None) or str(getattr(author, "id", "")),
+            "author_id": str(getattr(author, "id", "")) if author is not None else None,
+            "content": getattr(message, "content", ""),
+            "created_at": created_at,
+            "reply_to": reply_to,
+            "attachments": attachments,
+        }
+
+    async def list_channels_admin(self) -> Dict[str, Any]:
+        """List channels and threads visible to the bot for admin tooling."""
+        if not self._client:
+            return {"success": False, "error": "Not connected"}
+
+        channels: list[Dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        for guild in getattr(self._client, "guilds", []) or []:
+            guild_name = getattr(guild, "name", None)
+            guild_id = str(getattr(guild, "id", "")) if getattr(guild, "id", None) is not None else None
+
+            for channel in list(getattr(guild, "channels", []) or []):
+                channel_id = str(getattr(channel, "id", ""))
+                if channel_id in seen_ids:
+                    continue
+                seen_ids.add(channel_id)
+                channel_type = self._channel_type_label(channel)
+                entry = {
+                    "id": channel_id,
+                    "name": getattr(channel, "name", channel_id),
+                    "type": channel_type,
+                    "guild": guild_name,
+                    "guild_id": guild_id,
+                    "thread_capable": channel_type in ("channel", "forum"),
+                }
+                parent = getattr(channel, "parent", None)
+                if parent is not None:
+                    entry["parent_id"] = str(getattr(parent, "id", "")) if getattr(parent, "id", None) is not None else None
+                    entry["parent_name"] = getattr(parent, "name", None)
+                channels.append(entry)
+
+            for thread in list(getattr(guild, "threads", []) or []):
+                thread_id = str(getattr(thread, "id", ""))
+                if thread_id in seen_ids:
+                    continue
+                seen_ids.add(thread_id)
+                parent = getattr(thread, "parent", None)
+                channels.append({
+                    "id": thread_id,
+                    "name": getattr(thread, "name", thread_id),
+                    "type": "thread",
+                    "guild": guild_name,
+                    "guild_id": guild_id,
+                    "thread_capable": False,
+                    "parent_id": str(getattr(parent, "id", "")) if getattr(parent, "id", None) is not None else None,
+                    "parent_name": getattr(parent, "name", None),
+                })
+
+        return {"success": True, "channels": channels}
+
+    async def read_channel_history_admin(self, channel_id: str, limit: int = 20) -> Dict[str, Any]:
+        """Read recent channel history for admin tooling."""
+        if not self._client:
+            return {"success": False, "error": "Not connected"}
+
+        try:
+            channel = self._client.get_channel(int(channel_id))
+            if not channel:
+                channel = await self._client.fetch_channel(int(channel_id))
+            if not channel:
+                return {"success": False, "error": f"Channel {channel_id} not found"}
+
+            messages = []
+            try:
+                history = channel.history(limit=limit)
+                async for message in history:
+                    messages.append(self._normalize_admin_message(message))
+            except Exception as exc:
+                return {"success": False, "error": f"Missing permission to read channel history: {exc}"}
+
+            return {
+                "success": True,
+                "channel_id": str(channel_id),
+                "messages": messages,
+            }
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def create_thread_admin(
+        self,
+        channel_id: str,
+        name: str,
+        message: str = "",
+        auto_archive_duration: int = 1440,
+    ) -> Dict[str, Any]:
+        """Create a thread from a Discord channel for admin tooling."""
+        if not self._client:
+            return {"success": False, "error": "Not connected"}
+
+        try:
+            channel = self._client.get_channel(int(channel_id))
+            if not channel:
+                channel = await self._client.fetch_channel(int(channel_id))
+            if not channel:
+                return {"success": False, "error": f"Channel {channel_id} not found"}
+
+            reason = "Requested by Hermes discord_admin tool"
+            thread_kwargs = {
+                "name": name,
+                "auto_archive_duration": auto_archive_duration,
+                "reason": reason,
+            }
+            public_thread_type = getattr(getattr(discord, "ChannelType", None), "public_thread", None)
+            if public_thread_type is not None:
+                thread_kwargs["type"] = public_thread_type
+            thread = await channel.create_thread(**thread_kwargs)
+            starter = (message or "").strip()
+            if starter:
+                await thread.send(starter)
+            return {
+                "success": True,
+                "thread_id": str(getattr(thread, "id", "")),
+                "thread_name": getattr(thread, "name", None) or name,
+            }
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def create_channel_admin(
+        self,
+        guild_id: str,
+        name: str,
+        category_id: str | None = None,
+        topic: str | None = None,
+        nsfw: bool = False,
+    ) -> Dict[str, Any]:
+        """Create a Discord text channel for admin tooling."""
+        if not self._client:
+            return {"success": False, "error": "Not connected"}
+
+        try:
+            guild = self._client.get_guild(int(guild_id))
+            if not guild:
+                return {"success": False, "error": f"Guild {guild_id} not found"}
+
+            category = None
+            if category_id:
+                category = self._client.get_channel(int(category_id))
+                if not category and hasattr(self._client, "fetch_channel"):
+                    category = await self._client.fetch_channel(int(category_id))
+                if not category:
+                    return {"success": False, "error": f"Category {category_id} not found"}
+
+            channel = await guild.create_text_channel(
+                name=name,
+                category=category,
+                topic=topic,
+                nsfw=nsfw,
+                reason="Requested by Hermes discord_admin tool",
+            )
+            return {
+                "success": True,
+                "channel_id": str(getattr(channel, "id", "")),
+                "channel_name": getattr(channel, "name", name),
+            }
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    async def pin_message_admin(self, channel_id: str, message_id: str) -> Dict[str, Any]:
+        """Pin a Discord message for admin tooling."""
+        if not self._client:
+            return {"success": False, "error": "Not connected"}
+
+        try:
+            channel = self._client.get_channel(int(channel_id))
+            if not channel:
+                channel = await self._client.fetch_channel(int(channel_id))
+            if not channel:
+                return {"success": False, "error": f"Channel {channel_id} not found"}
+
+            message = await channel.fetch_message(int(message_id))
+            await message.pin(reason="Requested by Hermes discord_admin tool")
+            return {
+                "success": True,
+                "channel_id": str(channel_id),
+                "message_id": str(message_id),
+                "pinned": True,
+            }
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
     async def _resolve_allowed_usernames(self) -> None:
         """
         Resolve non-numeric entries in DISCORD_ALLOWED_USERS to Discord user IDs.

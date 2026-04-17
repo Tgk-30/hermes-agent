@@ -13,6 +13,8 @@ Regression tests for two bugs in WhatsAppAdapter.connect():
 """
 
 import asyncio
+import tempfile
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -47,7 +49,7 @@ def _make_adapter():
     adapter.config = MagicMock()
     adapter._bridge_port = 19876
     adapter._bridge_script = "/tmp/test-bridge.js"
-    adapter._session_path = Path("/tmp/test-wa-session")
+    adapter._session_path = Path(tempfile.gettempdir()) / f"test-wa-session-{uuid.uuid4().hex}"
     adapter._bridge_log_fh = None
     adapter._bridge_log = None
     adapter._bridge_process = None
@@ -470,9 +472,12 @@ class TestHttpSessionLifecycle:
         mock_task = MagicMock()
         mock_task.done.return_value = False
         mock_task.cancel = MagicMock()
-        mock_future = asyncio.Future()
-        mock_future.set_exception(asyncio.CancelledError())
-        mock_task.__await__ = mock_future.__await__
+
+        class _CancelledAwaitable:
+            def __await__(self):
+                raise asyncio.CancelledError()
+
+        mock_task.__await__ = _CancelledAwaitable().__await__
         adapter._poll_task = mock_task
         adapter._http_session = None
         adapter._bridge_process = None

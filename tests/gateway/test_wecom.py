@@ -116,6 +116,33 @@ class TestWeComConnect:
         assert adapter.fatal_error_code == "wecom_connect_error"
         assert "invalid secret" in (adapter.fatal_error_message or "")
 
+    @pytest.mark.asyncio
+    async def test_connect_rejects_insecure_websocket_url(self, monkeypatch):
+        import gateway.platforms.wecom as wecom_module
+        from gateway.platforms.wecom import WeComAdapter
+
+        monkeypatch.setattr(wecom_module, "AIOHTTP_AVAILABLE", True)
+        monkeypatch.setattr(wecom_module, "HTTPX_AVAILABLE", True)
+
+        adapter = WeComAdapter(
+            PlatformConfig(
+                enabled=True,
+                extra={
+                    "bot_id": "bot-1",
+                    "secret": "cfg-secret",
+                    "websocket_url": "ws://example.com/ws",
+                },
+            )
+        )
+        adapter._open_connection = AsyncMock(return_value=None)
+
+        success = await adapter.connect()
+
+        assert success is False
+        assert adapter.has_fatal_error is True
+        assert adapter.fatal_error_code == "wecom_insecure_websocket"
+        assert "wss://" in (adapter.fatal_error_message or "")
+
 
 class TestWeComReplyMode:
     @pytest.mark.asyncio
