@@ -1252,9 +1252,9 @@ The following files were reviewed and appear correct:
 
 ### Rescan Finding 32: `float("inf")` → `int()` raises uncaught `OverflowError`
 - **Source agent:** `agent-07`
-**Severity:** Medium  
-**Path:** `model_tools.py`  
-**Line(s):** ~430–443  
+**Severity:** Medium
+**Path:** `model_tools.py`
+**Line(s):** ~430–443
 **Evidence:**
 ```python
 def _coerce_number(value: str, integer_only: bool = False):
@@ -1287,9 +1287,9 @@ if f == int(f):
 
 ### Rescan Finding 33: `actual_cost_usd` treats `None` differently from `estimated_cost_usd` in `absolute=True` mode
 - **Source agent:** `agent-07`
-**Severity:** Low  
-**Path:** `hermes_state.py`  
-**Line(s):** ~400–430  
+**Severity:** Low
+**Path:** `hermes_state.py`
+**Line(s):** ~400–430
 **Evidence (absolute-mode SQL branch):**
 ```python
 estimated_cost_usd = COALESCE(?, 0),   # ← overwrites with 0 when None passed
@@ -1316,9 +1316,9 @@ The docstring states for `absolute=True`: "values are **set directly** — use t
 
 ### Rescan Finding 34: quadratic backtracking on mixed unquoted/quoted hyphenated input
 - **Source agent:** `agent-07`
-**Severity:** Low  
-**Path:** `hermes_state.py`  
-**Line(s):** ~940–970  
+**Severity:** Low
+**Path:** `hermes_state.py`
+**Line(s):** ~940–970
 **Evidence:**
 ```python
 sanitized = re.sub(r'"[^"]*"', _preserve_quoted, query)   # Step 1: protect quotes
@@ -1488,43 +1488,43 @@ Or process character-by-character without backtracking via regex.
 
 ### Rescan Finding 46: Stale Documentation Reference in unsloth Skill Index
 - **Source agent:** `agent-12`
-**Severity:** Low  
-**Path:** `skills/mlops/training/unsloth/SKILL.md`  
-**Line:** 37  
+**Severity:** Low
+**Path:** `skills/mlops/training/unsloth/SKILL.md`
+**Line:** 37
 **Evidence:**
 ```
 - **llms-txt.md** - Llms-Txt documentation
 ```
-**Actual file:** `references/llms-full.md` (16,799 lines of actual content)  
-**Why it matters:** Users following the reference index will get a 404 when trying to access the documented reference file. The index lists a non-existent file.  
+**Actual file:** `references/llms-full.md` (16,799 lines of actual content)
+**Why it matters:** Users following the reference index will get a 404 when trying to access the documented reference file. The index lists a non-existent file.
 **Suggested fix:** Change `llms-txt.md` to `llms-full.md` in the SKILL.md reference index.
 
 ---
 
 ### Rescan Finding 47: Reference Index Lists Wrong Filename
 - **Source agent:** `agent-12`
-**Severity:** Low  
-**Path:** `skills/mlops/training/unsloth/references/index.md`  
-**Line:** 6-7  
+**Severity:** Low
+**Path:** `skills/mlops/training/unsloth/references/index.md`
+**Line:** 6-7
 **Evidence:**
 ```
 ### Llms-Txt
 **File:** `llms-txt.md`
 **Pages:** 136
 ```
-**Actual file:** The actual documentation file is `llms-full.md` (16,799 lines), not `llms-txt.md`.  
-**Why it matters:** The index claims 136 pages for a non-existent file. Users or automated tools parsing this index will reference wrong files.  
+**Actual file:** The actual documentation file is `llms-full.md` (16,799 lines), not `llms-txt.md`.
+**Why it matters:** The index claims 136 pages for a non-existent file. Users or automated tools parsing this index will reference wrong files.
 **Suggested fix:** Update `llms-txt.md` to `llms-full.md` and correct the page count to 16799.
 
 ---
 
 ### Rescan Finding 48: Extremely Long Lines in pytorch-fsdp Documentation
 - **Source agent:** `agent-12`
-**Severity:** Low  
-**Path:** `skills/mlops/training/pytorch-fsdp/SKILL.md`  
-**Lines:** ~30-70 (Quick Reference section)  
-**Evidence:** Lines contain 40,000+ character content blocks with minimal whitespace. This is auto-generated documentation with raw PyTorch API dumps.  
-**Why it matters:** While technically valid Markdown, such long lines can cause rendering issues in some markdown viewers/editors, and may impact parsing tools or diff viewers.  
+**Severity:** Low
+**Path:** `skills/mlops/training/pytorch-fsdp/SKILL.md`
+**Lines:** ~30-70 (Quick Reference section)
+**Evidence:** Lines contain 40,000+ character content blocks with minimal whitespace. This is auto-generated documentation with raw PyTorch API dumps.
+**Why it matters:** While technically valid Markdown, such long lines can cause rendering issues in some markdown viewers/editors, and may impact parsing tools or diff viewers.
 **Suggested fix:** This appears to be auto-generated from PyTorch docs. Consider adding a pre-processing step to wrap long lines, or document that this file should not be manually edited.
 
 ---
@@ -1734,7 +1734,7 @@ The shard is generally well-maintained. The research-paper-writing skill is comp
 
 ### Rescan Finding 59: Broken API Key Environment Variable Names in Config Bridging
 - **Source agent:** `agent-15`
-**Severity:** CRITICAL  
+**Severity:** CRITICAL
 **Paths:**
 - `cli.py` lines 480, 486, 492
 - `gateway/run.py` lines 148, 154, 160
@@ -1792,7 +1792,7 @@ Note: The test file `tests/agent/test_auxiliary_config_bridge.py` has the same b
 
 ### Rescan Finding 60: LaTeX `\answerTODO` and `\justificationTODO` Commands in neurips.sty
 - **Source agent:** `agent-15`
-**Severity:** INFO (not a code bug)  
+**Severity:** INFO (not a code bug)
 **Path:** `skills/research/research-paper-writing/templates/neurips2025/neurips.sty` lines 324-325
 
 **Evidence:**
@@ -1807,7 +1807,7 @@ Note: The test file `tests/agent/test_auxiliary_config_bridge.py` has the same b
 
 ### Rescan Finding 61: Skill Placeholder Citation in SKILL.md
 - **Source agent:** `agent-15`
-**Severity:** INFO (documentation placeholder, not a code bug)  
+**Severity:** INFO (documentation placeholder, not a code bug)
 **Path:** `skills/research/research-paper-writing/SKILL.md` line 338
 
 **Evidence:**
