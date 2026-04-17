@@ -45,6 +45,8 @@ Obfuscates trigger words in the user's prompt to evade input-side safety classif
 - **Standard (22 techniques):** + Morse, Pig Latin, superscript, reversed, brackets, math fonts
 - **Heavy (33 techniques):** + Multi-layer combos, Base64, hex encoding, acrostic, triple-layer
 
+**Model-family note:** Parseltongue is most useful against models with keyword-based input classifiers (for example DeepSeek and some Qwen variants). Claude and GPT-family models tend to decode obfuscated text before safety evaluation, so obfuscation is usually wasted effort there.
+
 See `scripts/parseltongue.py` for the Python implementation.
 
 ### 3. ULTRAPLINIAN — Multi-Model Racing
@@ -96,7 +98,7 @@ undo_jailbreak()
 
 | Family | Strategy Order |
 |:-------|:---------------|
-| Claude | boundary_inversion → refusal_inversion → prefill_only → parseltongue |
+| Claude | refusal_inversion → prefill_only → parseltongue → boundary_inversion (legacy fallback) |
 | GPT | og_godmode → refusal_inversion → prefill_only → parseltongue |
 | Gemini | refusal_inversion → boundary_inversion → prefill_only → parseltongue |
 | Grok | unfiltered_liberated → prefill_only |
@@ -107,6 +109,8 @@ undo_jailbreak()
 | Mistral | prefill_only → refusal_inversion → parseltongue |
 
 Each strategy is also tried with prefill messages added if it fails alone.
+
+**Claude note:** `boundary_inversion` is a legacy fallback for older Claude 3.5-era behavior. For Claude Sonnet 4 / Claude 4.6, start with `refusal_inversion`; the boundary trick is documented below as patched.
 
 ### After auto-jailbreak:
 

@@ -15,13 +15,20 @@ This script removes:
 - Content-Type overrides for deleted files
 """
 
+import re
 import sys
 from pathlib import Path
 
 import defusedxml.minidom
 
 
-import re
+def _get_elements_by_local_name(dom, local_name: str):
+    """Return elements that match a local name with or without an XML prefix."""
+    return [
+        element
+        for element in dom.getElementsByTagName("*")
+        if getattr(element, "localName", None) == local_name or element.tagName == local_name
+    ]
 
 
 def get_slides_in_sldidlst(unpacked_dir: Path) -> set[str]:
@@ -33,7 +40,7 @@ def get_slides_in_sldidlst(unpacked_dir: Path) -> set[str]:
 
     rels_dom = defusedxml.minidom.parse(str(pres_rels_path))
     rid_to_slide = {}
-    for rel in rels_dom.getElementsByTagName("Relationship"):
+    for rel in _get_elements_by_local_name(rels_dom, "Relationship"):
         rid = rel.getAttribute("Id")
         target = rel.getAttribute("Target")
         rel_type = rel.getAttribute("Type")
@@ -72,7 +79,7 @@ def remove_orphaned_slides(unpacked_dir: Path) -> list[str]:
         rels_dom = defusedxml.minidom.parse(str(pres_rels_path))
         changed = False
 
-        for rel in list(rels_dom.getElementsByTagName("Relationship")):
+        for rel in list(_get_elements_by_local_name(rels_dom, "Relationship")):
             target = rel.getAttribute("Target")
             if target.startswith("slides/"):
                 slide_name = target.replace("slides/", "")
@@ -112,7 +119,7 @@ def get_slide_referenced_files(unpacked_dir: Path) -> set:
 
     for rels_file in slides_rels_dir.glob("*.rels"):
         dom = defusedxml.minidom.parse(str(rels_file))
-        for rel in dom.getElementsByTagName("Relationship"):
+        for rel in _get_elements_by_local_name(dom, "Relationship"):
             target = rel.getAttribute("Target")
             if not target:
                 continue
@@ -155,7 +162,7 @@ def get_referenced_files(unpacked_dir: Path) -> set:
 
     for rels_file in unpacked_dir.rglob("*.rels"):
         dom = defusedxml.minidom.parse(str(rels_file))
-        for rel in dom.getElementsByTagName("Relationship"):
+        for rel in _get_elements_by_local_name(dom, "Relationship"):
             target = rel.getAttribute("Target")
             if not target:
                 continue
@@ -226,7 +233,7 @@ def update_content_types(unpacked_dir: Path, removed_files: list[str]) -> None:
     dom = defusedxml.minidom.parse(str(ct_path))
     changed = False
 
-    for override in list(dom.getElementsByTagName("Override")):
+    for override in list(_get_elements_by_local_name(dom, "Override")):
         part_name = override.getAttribute("PartName").lstrip("/")
         if part_name in removed_files:
             if override.parentNode:

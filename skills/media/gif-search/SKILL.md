@@ -28,7 +28,11 @@ Get a free API key at https://developers.google.com/tenor/guides/quickstart — 
 
 ## Prerequisites
 
-- `curl` and `jq` (both standard on macOS/Linux)
+- `curl`
+- `jq` for parsing Tenor's JSON responses
+  - macOS: `brew install jq`
+  - Ubuntu/Debian: `sudo apt install jq`
+  - Fallback if `jq` is unavailable: pipe the JSON into `python3 -m json.tool`
 - `TENOR_API_KEY` environment variable
 
 ## Search for GIFs
