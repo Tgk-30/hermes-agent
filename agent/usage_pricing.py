@@ -80,6 +80,10 @@ _UTC_NOW = lambda: datetime.now(timezone.utc)
 
 # Official docs snapshot entries. Models whose published pricing and cache
 # semantics are stable enough to encode exactly.
+#
+# Keep this snapshot aligned with the live provider pricing pages whenever a
+# provider updates prompt-caching or token pricing; otherwise cost estimates can
+# drift silently.
 _OFFICIAL_DOCS_PRICING: Dict[tuple[str, str], PricingEntry] = {
     (
         "anthropic",

@@ -527,7 +527,7 @@ def _classify_by_status(
 def _classify_402(error_msg: str, result_fn) -> ClassifiedError:
     """Disambiguate 402: billing exhaustion vs transient usage limit.
 
-    The key insight from OpenClaw: some 402s are transient rate limits
+    The key insight from Hermes: some 402s are transient rate limits
     disguised as payment errors.  "Usage limit, try again in 5 minutes"
     is NOT a billing problem — it's a periodic quota that resets.
     """
@@ -611,7 +611,12 @@ def _classify_400(
         if not err_body_msg:
             err_body_msg = (body.get("message") or "").strip().lower()
     is_generic = len(err_body_msg) < 30 or err_body_msg in ("error", "")
-    is_large = approx_tokens > context_length * 0.4 or approx_tokens > 80000 or num_messages > 80
+    has_valid_context_length = isinstance(context_length, (int, float)) and context_length > 0
+    is_large = (
+        (has_valid_context_length and approx_tokens > context_length * 0.4)
+        or approx_tokens > 80000
+        or num_messages > 80
+    )
 
     if is_generic and is_large:
         return result_fn(

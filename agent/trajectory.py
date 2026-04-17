@@ -5,9 +5,12 @@ calls agent._convert_to_trajectory_format). Only the static helpers and
 the file-write logic live here.
 """
 
+import hashlib
 import json
 import logging
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -24,7 +27,13 @@ def has_incomplete_scratchpad(content: str) -> bool:
     """Check if content has an opening <REASONING_SCRATCHPAD> without a closing tag."""
     if not content:
         return False
-    return "<REASONING_SCRATCHPAD>" in content and "</REASONING_SCRATCHPAD>" not in content
+    return content.count("<REASONING_SCRATCHPAD>") > content.count("</REASONING_SCRATCHPAD>")
+
+
+def _append_trajectory_entry(filename: str | Path, entry: Dict[str, Any]) -> None:
+    """Append one JSONL entry to the requested file."""
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def save_trajectory(trajectory: List[Dict[str, Any]], model: str,
@@ -49,8 +58,16 @@ def save_trajectory(trajectory: List[Dict[str, Any]], model: str,
     }
 
     try:
-        with open(filename, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        _append_trajectory_entry(filename, entry)
         logger.info("Trajectory saved to %s", filename)
     except Exception as e:
-        logger.warning("Failed to save trajectory: %s", e)
+        primary = Path(filename).expanduser()
+        fallback_key = hashlib.sha256(str(primary).encode("utf-8")).hexdigest()[:16]
+        fallback = Path(tempfile.gettempdir()) / "hermes-trajectories" / fallback_key / primary.name
+        logger.error("Failed to save trajectory to %s, retrying in %s: %s", filename, fallback, e)
+        try:
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            _append_trajectory_entry(fallback, entry)
+            logger.info("Trajectory saved to fallback %s", fallback)
+        except Exception as fallback_error:
+            logger.error("Failed to save trajectory to fallback %s: %s", fallback, fallback_error)

@@ -25,8 +25,9 @@ from agent.auxiliary_client import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
+def _clean_env(tmp_path, monkeypatch):
     """Strip provider env vars so each test starts clean."""
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / ".codex"))
     for key in (
         "OPENROUTER_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_KEY",
         "OPENAI_MODEL", "LLM_MODEL", "NOUS_INFERENCE_BASE_URL",

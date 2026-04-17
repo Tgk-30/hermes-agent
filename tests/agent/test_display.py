@@ -141,6 +141,22 @@ class TestEditDiffPreview:
         assert "-old" in diff
         assert "+new" in diff
 
+    def test_extract_edit_diff_ignores_data_only_write_results(self, tmp_path):
+        target = tmp_path / "note.txt"
+        target.write_text("old\n", encoding="utf-8")
+
+        snapshot = capture_local_edit_snapshot("write_file", {"path": str(target)})
+        target.write_text("new\n", encoding="utf-8")
+
+        diff = extract_edit_diff(
+            "write_file",
+            '{"path": "/tmp/note.txt", "lines": 2}',
+            function_args={"path": str(target)},
+            snapshot=snapshot,
+        )
+
+        assert diff is None
+
     def test_render_edit_diff_with_delta_invokes_printer(self):
         printer = MagicMock()
 

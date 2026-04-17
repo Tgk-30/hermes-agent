@@ -363,20 +363,23 @@ def capture_local_edit_snapshot(tool_name: str, function_args: dict | None) -> L
     return snapshot
 
 
-def _result_succeeded(result: str | None) -> bool:
-    """Conservatively detect whether a tool result represents success."""
+def _result_succeeded(tool_name: str, result: str | None) -> bool:
+    """Detect success for write-capable tool results without guessing on arbitrary JSON."""
     if not result:
         return False
     data = safe_json_loads(result)
-    if data is None:
-        return False
-    if not isinstance(data, dict):
+    if data is None or not isinstance(data, dict):
         return False
     if data.get("error"):
         return False
     if "success" in data:
         return bool(data.get("success"))
-    return True
+
+    if tool_name == "write_file":
+        bytes_written = data.get("bytes_written")
+        return isinstance(bytes_written, int) and bytes_written >= 0
+
+    return False
 
 
 def _diff_from_snapshot(snapshot: LocalEditSnapshot | None) -> str | None:
@@ -425,7 +428,7 @@ def extract_edit_diff(
 
     if tool_name not in {"write_file", "patch", "skill_manage"}:
         return None
-    if not _result_succeeded(result):
+    if not _result_succeeded(tool_name, result):
         return None
     return _diff_from_snapshot(snapshot)
 

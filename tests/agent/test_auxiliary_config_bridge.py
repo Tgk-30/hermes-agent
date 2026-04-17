@@ -28,6 +28,8 @@ def _run_auxiliary_bridge(config_dict, monkeypatch):
         "AUXILIARY_VISION_BASE_URL", "AUXILIARY_VISION_API_KEY",
         "AUXILIARY_WEB_EXTRACT_PROVIDER", "AUXILIARY_WEB_EXTRACT_MODEL",
         "AUXILIARY_WEB_EXTRACT_BASE_URL", "AUXILIARY_WEB_EXTRACT_API_KEY",
+        "AUXILIARY_APPROVAL_PROVIDER", "AUXILIARY_APPROVAL_MODEL",
+        "AUXILIARY_APPROVAL_BASE_URL", "AUXILIARY_APPROVAL_API_KEY",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -48,6 +50,12 @@ def _run_auxiliary_bridge(config_dict, monkeypatch):
                 "model": "AUXILIARY_WEB_EXTRACT_MODEL",
                 "base_url": "AUXILIARY_WEB_EXTRACT_BASE_URL",
                 "api_key": "AUXILIARY_WEB_EXTRACT_API_KEY",
+            },
+            "approval": {
+                "provider": "AUXILIARY_APPROVAL_PROVIDER",
+                "model": "AUXILIARY_APPROVAL_MODEL",
+                "base_url": "AUXILIARY_APPROVAL_BASE_URL",
+                "api_key": "AUXILIARY_APPROVAL_API_KEY",
             },
         }
         for task_key, env_map in aux_task_env.items():
@@ -174,6 +182,21 @@ class TestAuxiliaryConfigBridge:
         assert os.environ.get("AUXILIARY_WEB_EXTRACT_PROVIDER") == "nous"
         assert os.environ.get("AUXILIARY_WEB_EXTRACT_MODEL") == "gemini-3-flash"
 
+    def test_approval_api_key_bridged(self, monkeypatch):
+        config = {
+            "auxiliary": {
+                "approval": {
+                    "provider": "openrouter",
+                    "api_key": "approval-test-key",
+                    "model": "openai/gpt-4.1-mini",
+                }
+            }
+        }
+        _run_auxiliary_bridge(config, monkeypatch)
+        assert os.environ.get("AUXILIARY_APPROVAL_PROVIDER") == "openrouter"
+        assert os.environ.get("AUXILIARY_APPROVAL_MODEL") == "openai/gpt-4.1-mini"
+        assert os.environ.get("AUXILIARY_APPROVAL_API_KEY") == "approval-test-key"
+
     def test_whitespace_in_values_stripped(self, monkeypatch):
         config = {
             "auxiliary": {
@@ -210,6 +233,10 @@ class TestGatewayBridgeCodeParity:
         assert "AUXILIARY_WEB_EXTRACT_MODEL" in content
         assert "AUXILIARY_WEB_EXTRACT_BASE_URL" in content
         assert "AUXILIARY_WEB_EXTRACT_API_KEY" in content
+        assert "AUXILIARY_APPROVAL_PROVIDER" in content
+        assert "AUXILIARY_APPROVAL_MODEL" in content
+        assert "AUXILIARY_APPROVAL_BASE_URL" in content
+        assert "AUXILIARY_APPROVAL_API_KEY" in content
 
     def test_gateway_no_compression_env_bridge(self):
         """Gateway should NOT bridge compression config to env vars (config-only)."""
