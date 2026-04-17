@@ -32,6 +32,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import sys
 import urllib.request
 
 from hermes_constants import get_hermes_home
@@ -181,6 +182,35 @@ def _hermes_bin_dir() -> str:
     return d
 
 
+def _install_logging_available() -> bool:
+    """Return False when background logging would hit a closed stream."""
+    is_finalizing = getattr(sys, "is_finalizing", None)
+    if callable(is_finalizing) and is_finalizing():
+        return False
+
+    for candidate in (logging.getLogger(), logger):
+        for handler in getattr(candidate, "handlers", ()):
+            stream = getattr(handler, "stream", None)
+            if stream is None:
+                continue
+            try:
+                if stream.closed:
+                    return False
+            except Exception:
+                return False
+    return True
+
+
+def _install_log(level: int, msg: str, *args, **kwargs) -> None:
+    """Best-effort logging for installer paths."""
+    if not _install_logging_available():
+        return
+    try:
+        logger.log(level, msg, *args, **kwargs)
+    except ValueError:
+        pass
+
+
 def _detect_target() -> str | None:
     """Return the Rust target triple for the current platform, or None."""
     system = platform.system()
@@ -226,7 +256,7 @@ def _verify_cosign(checksums_path: str, sig_path: str, cert_path: str) -> bool |
     """
     cosign = shutil.which("cosign")
     if not cosign:
-        logger.info("cosign not found on PATH")
+        _install_log(logging.INFO, "cosign not found on PATH")
         return None
 
     try:
@@ -242,14 +272,18 @@ def _verify_cosign(checksums_path: str, sig_path: str, cert_path: str) -> bool |
             timeout=15,
         )
         if result.returncode == 0:
-            logger.info("cosign provenance verification passed")
+            _install_log(logging.INFO, "cosign provenance verification passed")
             return True
         else:
-            logger.warning("cosign verification failed (exit %d): %s",
-                          result.returncode, result.stderr.strip())
+            _install_log(
+                logging.WARNING,
+                "cosign verification failed (exit %d): %s",
+                result.returncode,
+                result.stderr.strip(),
+            )
             return False
     except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.warning("cosign execution failed: %s", exc)
+        _install_log(logging.WARNING, "cosign execution failed: %s", exc)
         return None
 
 
@@ -264,7 +298,7 @@ def _verify_checksum(archive_path: str, checksums_path: str, archive_name: str) 
                 expected = parts[0]
                 break
     if not expected:
-        logger.warning("No checksum entry for %s", archive_name)
+        _install_log(logging.WARNING, "No checksum entry for %s", archive_name)
         return False
 
     sha = hashlib.sha256()
@@ -273,7 +307,12 @@ def _verify_checksum(archive_path: str, checksums_path: str, archive_name: str) 
             sha.update(chunk)
     actual = sha.hexdigest()
     if actual != expected:
-        logger.warning("Checksum mismatch: expected %s, got %s", expected, actual)
+        _install_log(
+            logging.WARNING,
+            "Checksum mismatch: expected %s, got %s",
+            expected,
+            actual,
+        )
         return False
     return True
 
@@ -286,12 +325,19 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
     failure_reason is a short tag used by the disk marker to decide if the
     failure is retryable (e.g. "cosign_missing" clears when cosign appears).
     """
-    log = logger.warning if log_failures else logger.debug
+    if log_failures:
+        log = lambda msg, *args, **kwargs: _install_log(logging.WARNING, msg, *args, **kwargs)
+    else:
+        log = lambda msg, *args, **kwargs: _install_log(logging.DEBUG, msg, *args, **kwargs)
 
     target = _detect_target()
     if not target:
-        logger.info("tirith auto-install: unsupported platform %s/%s",
-                     platform.system(), platform.machine())
+        _install_log(
+            logging.INFO,
+            "tirith auto-install: unsupported platform %s/%s",
+            platform.system(),
+            platform.machine(),
+        )
         return None, "unsupported_platform"
 
     archive_name = f"tirith-{target}.tar.gz"
@@ -304,7 +350,7 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
         sig_path = os.path.join(tmpdir, "checksums.txt.sig")
         cert_path = os.path.join(tmpdir, "checksums.txt.pem")
 
-        logger.info("tirith not found — downloading latest release for %s...", target)
+        _install_log(logging.INFO, "tirith not found — downloading latest release for %s...", target)
 
         try:
             _download_file(f"{base_url}/{archive_name}", archive_path)
@@ -324,7 +370,11 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
                 _download_file(f"{base_url}/checksums.txt.sig", sig_path)
                 _download_file(f"{base_url}/checksums.txt.pem", cert_path)
             except Exception as exc:
-                logger.info("cosign artifacts unavailable (%s), proceeding with SHA-256 only", exc)
+                _install_log(
+                    logging.INFO,
+                    "cosign artifacts unavailable (%s), proceeding with SHA-256 only",
+                    exc,
+                )
             else:
                 cosign_result = _verify_cosign(checksums_path, sig_path, cert_path)
                 if cosign_result is True:
@@ -337,10 +387,13 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
                 else:
                     # None = execution failure (timeout/OSError) — proceed
                     # with SHA-256 only since cosign itself is broken.
-                    logger.info("cosign execution failed, proceeding with SHA-256 only")
+                    _install_log(logging.INFO, "cosign execution failed, proceeding with SHA-256 only")
         else:
-            logger.info("cosign not on PATH — installing tirith with SHA-256 verification only "
-                        "(install cosign for full supply chain verification)")
+            _install_log(
+                logging.INFO,
+                "cosign not on PATH — installing tirith with SHA-256 verification only "
+                "(install cosign for full supply chain verification)",
+            )
 
         if not _verify_checksum(archive_path, checksums_path, archive_name):
             return None, "checksum_failed"
@@ -378,7 +431,7 @@ def _install_tirith(*, log_failures: bool = True) -> tuple[str | None, str]:
         os.chmod(dest, os.stat(dest).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         verification = "cosign + SHA-256" if cosign_verified else "SHA-256 only"
-        logger.info("tirith installed to %s (%s)", dest, verification)
+        _install_log(logging.INFO, "tirith installed to %s (%s)", dest, verification)
         return dest, ""
 
     finally:

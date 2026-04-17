@@ -1,10 +1,12 @@
 """Tests for OSV malware check on MCP extension packages."""
 
 import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from tools.osv_check import (
+    _MAX_RESPONSE_BYTES,
     check_package_for_malware,
     _infer_ecosystem,
     _parse_package_from_args,
@@ -115,11 +117,28 @@ class TestCheckPackageForMalware:
         assert "MAL-2023-7938" in result
         assert "CVE-2023-1234" not in result  # regular CVEs filtered
 
-    def test_network_error_fails_open(self):
-        """Network errors allow the package (fail-open)."""
-        with patch("tools.osv_check.urllib.request.urlopen", side_effect=ConnectionError("timeout")):
-            result = check_package_for_malware("npx", ["some-package"])
+    def test_network_error_fails_open_with_warning(self, caplog):
+        """Network errors allow the package, but still surface a warning."""
+        with caplog.at_level("WARNING", logger="tools.osv_check"):
+            with patch("tools.osv_check.urllib.request.urlopen", side_effect=ConnectionError("timeout")):
+                result = check_package_for_malware("npx", ["some-package"])
         assert result is None
+        assert any("OSV malware check failed" in r.message for r in caplog.records)
+        assert any("allowing package" in r.message for r in caplog.records)
+
+    def test_oversized_response_fails_open_with_warning(self, caplog):
+        """Oversized OSV responses should be rejected and logged, not parsed."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"x" * (_MAX_RESPONSE_BYTES + 1)
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with caplog.at_level("WARNING", logger="tools.osv_check"):
+            with patch("tools.osv_check.urllib.request.urlopen", return_value=mock_response):
+                result = check_package_for_malware("npx", ["oversized-package"])
+
+        assert result is None
+        assert any("OSV response too large" in r.message for r in caplog.records)
 
     def test_non_npx_skipped(self):
         """Non-npx/uvx commands are skipped entirely."""
@@ -168,3 +187,15 @@ class TestLiveOsvQuery:
             assert len(result) == 0
         except Exception:
             pytest.skip("OSV API unreachable")
+
+
+class TestQueryOsvResponseLimits:
+    def test_oversized_response_raises_value_error(self):
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"x" * (_MAX_RESPONSE_BYTES + 1)
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("tools.osv_check.urllib.request.urlopen", return_value=mock_response):
+            with pytest.raises(ValueError, match="OSV response too large"):
+                _query_osv("react", "npm")

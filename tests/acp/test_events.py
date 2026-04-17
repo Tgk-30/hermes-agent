@@ -2,7 +2,7 @@
 
 import asyncio
 from concurrent.futures import Future
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,7 +21,7 @@ from acp_adapter.events import (
 def mock_conn():
     """Mock ACP Client connection."""
     conn = MagicMock(spec=acp.Client)
-    conn.session_update = AsyncMock()
+    conn.session_update = MagicMock()
     return conn
 
 

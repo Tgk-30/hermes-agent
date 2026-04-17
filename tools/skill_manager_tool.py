@@ -495,12 +495,22 @@ def _delete_skill(name: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Skill '{name}' is in an external directory and cannot be deleted."}
 
     skill_dir = existing["path"]
-    shutil.rmtree(skill_dir)
+    try:
+        shutil.rmtree(skill_dir)
+    except OSError as exc:
+        logger.warning("Failed to delete skill %s at %s: %s", name, skill_dir, exc)
+        return {
+            "success": False,
+            "error": f"Failed to delete skill '{name}': {exc}",
+        }
 
     # Clean up empty category directories (don't remove SKILLS_DIR itself)
     parent = skill_dir.parent
     if parent != SKILLS_DIR and parent.exists() and not any(parent.iterdir()):
-        parent.rmdir()
+        try:
+            parent.rmdir()
+        except OSError as exc:
+            logger.debug("Could not remove empty category directory %s: %s", parent, exc)
 
     return {
         "success": True,

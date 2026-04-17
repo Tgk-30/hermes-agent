@@ -82,6 +82,7 @@ class ProcessSession:
     max_output_chars: int = MAX_OUTPUT_CHARS
     detached: bool = False                      # True if recovered from crash (no pipe)
     pid_scope: str = "host"                     # "host" for local/PTY PIDs, "sandbox" for env-local PIDs
+    _detached_note_sent: bool = field(default=False, repr=False)
     # Watcher/notification metadata (persisted for crash recovery)
     watcher_platform: str = ""
     watcher_chat_id: str = ""
@@ -663,7 +664,10 @@ class ProcessRegistry:
             self._completion_consumed.add(session_id)
         if session.detached:
             result["detached"] = True
-            result["note"] = "Process recovered after restart -- output history unavailable"
+            with session._lock:
+                if not session._detached_note_sent:
+                    result["note"] = "Process recovered after restart -- output history unavailable"
+                    session._detached_note_sent = True
         return result
 
     def read_log(self, session_id: str, offset: int = 0, limit: int = 200) -> dict:

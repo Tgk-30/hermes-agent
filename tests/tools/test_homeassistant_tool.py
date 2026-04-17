@@ -322,8 +322,9 @@ class TestCallServiceStringData:
             "entity_id": "climate.living_room",
             "data": '{"hvac_mode": "heat"}',
         })
-        call_args = mock_run.call_args[0][0]  # the coroutine arg
-        # _run_async was called, meaning we got past validation
+        assert mock_run.call_count == 1
+        assert callable(mock_run.call_args[0][0])
+        # _run_async now receives a factory, so no coroutine is created here.
 
     @patch("tools.homeassistant_tool._run_async", return_value={"success": True})
     def test_dict_data_passthrough(self, mock_run):

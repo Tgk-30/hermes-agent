@@ -204,8 +204,13 @@ async def _async_call_service(
 # Sync wrappers (handler signature: (args, **kw) -> str)
 # ---------------------------------------------------------------------------
 
-def _run_async(coro):
-    """Run an async coroutine from a sync handler."""
+def _run_async(coro_or_factory):
+    """Run an async coroutine from a sync handler.
+
+    Accepts either an awaitable or a zero-arg factory returning one. The
+    factory form avoids creating coroutines when tests mock this wrapper.
+    """
+    coro = coro_or_factory() if callable(coro_or_factory) else coro_or_factory
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -226,7 +231,7 @@ def _handle_list_entities(args: dict, **kw) -> str:
     domain = args.get("domain")
     area = args.get("area")
     try:
-        result = _run_async(_async_list_entities(domain=domain, area=area))
+        result = _run_async(lambda: _async_list_entities(domain=domain, area=area))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_list_entities error: %s", e)
@@ -241,7 +246,7 @@ def _handle_get_state(args: dict, **kw) -> str:
     if not _ENTITY_ID_RE.match(entity_id):
         return tool_error(f"Invalid entity_id format: {entity_id}")
     try:
-        result = _run_async(_async_get_state(entity_id))
+        result = _run_async(lambda: _async_get_state(entity_id))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_get_state error: %s", e)
@@ -281,7 +286,7 @@ def _handle_call_service(args: dict, **kw) -> str:
             return tool_error(f"Invalid JSON string in 'data' parameter: {e}")
 
     try:
-        result = _run_async(_async_call_service(domain, service, entity_id, data))
+        result = _run_async(lambda: _async_call_service(domain, service, entity_id, data))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_call_service error: %s", e)
@@ -330,7 +335,7 @@ def _handle_list_services(args: dict, **kw) -> str:
     """Handler for ha_list_services tool."""
     domain = args.get("domain")
     try:
-        result = _run_async(_async_list_services(domain=domain))
+        result = _run_async(lambda: _async_list_services(domain=domain))
         return json.dumps({"result": result})
     except Exception as e:
         logger.error("ha_list_services error: %s", e)

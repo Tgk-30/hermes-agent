@@ -80,6 +80,7 @@ import re
 import shutil
 import threading
 import time
+from contextlib import suppress
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -1245,6 +1246,19 @@ def _ensure_mcp_loop():
         _mcp_thread.start()
 
 
+def _close_unsubmitted_coroutine(coro) -> None:
+    """Close a coroutine only when this thread never handed it to the MCP loop."""
+    if inspect.iscoroutine(coro):
+        coro.close()
+
+
+def _cancel_mcp_future(future: concurrent.futures.Future) -> None:
+    """Best-effort cancellation for work already submitted to the MCP loop."""
+    future.cancel()
+    with suppress(Exception):
+        future.result(timeout=1)
+
+
 def _run_on_mcp_loop(coro, timeout: float = 30):
     """Schedule a coroutine on the MCP event loop and block until done.
 
@@ -1256,20 +1270,26 @@ def _run_on_mcp_loop(coro, timeout: float = 30):
     with _lock:
         loop = _mcp_loop
     if loop is None or not loop.is_running():
+        _close_unsubmitted_coroutine(coro)
         raise RuntimeError("MCP event loop is not running")
-    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    try:
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+    except Exception:
+        _close_unsubmitted_coroutine(coro)
+        raise
     deadline = None if timeout is None else time.monotonic() + timeout
 
     while True:
         if is_interrupted():
-            future.cancel()
+            _cancel_mcp_future(future)
             raise InterruptedError("User sent a new message")
 
         wait_timeout = 0.1
         if deadline is not None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return future.result(timeout=0)
+                _cancel_mcp_future(future)
+                raise concurrent.futures.TimeoutError()
             wait_timeout = min(wait_timeout, remaining)
 
         try:
@@ -2047,7 +2067,11 @@ def register_mcp_servers(servers: Dict[str, dict]) -> List[str]:
 
     # Per-server timeouts are handled inside _discover_and_register_server.
     # The outer timeout is generous: 120s total for parallel discovery.
-    _run_on_mcp_loop(_discover_all(), timeout=120)
+    discover_coro = _discover_all()
+    try:
+        _run_on_mcp_loop(discover_coro, timeout=120)
+    except Exception:
+        raise
 
     # Log a summary so ACP callers get visibility into what was registered.
     with _lock:
@@ -2211,8 +2235,9 @@ def probe_mcp_server_tools() -> Dict[str, List[tuple]]:
             return_exceptions=True,
         )
 
+    probe_coro = _probe_all()
     try:
-        _run_on_mcp_loop(_probe_all(), timeout=120)
+        _run_on_mcp_loop(probe_coro, timeout=120)
     except Exception as exc:
         logger.debug("MCP probe failed: %s", exc)
     finally:

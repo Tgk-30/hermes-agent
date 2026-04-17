@@ -56,6 +56,23 @@ ALL_POSSIBLE_TOOLS = set(TOOL_TO_TOOLSET_MAP.keys())
 # Default stats for tools that weren't used
 DEFAULT_TOOL_STATS = {'count': 0, 'success': 0, 'failure': 0}
 
+_PLAINTEXT_ERROR_PREFIXES = (
+    "error:",
+    "error ",
+    "error\n",
+    "error -",
+    "[error]",
+    "err:",
+)
+
+
+def _looks_like_plaintext_tool_error(content: Any) -> bool:
+    """Detect common plain-text tool failure prefixes without broad substring matching."""
+    if not isinstance(content, str):
+        return False
+    lowered = content.strip().lower()
+    return bool(lowered) and lowered.startswith(_PLAINTEXT_ERROR_PREFIXES)
+
 
 def _normalize_tool_stats(tool_stats: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
     """
@@ -175,12 +192,11 @@ def _extract_tool_stats(messages: List[Dict[str, Any]]) -> Dict[str, Dict[str, i
                         is_success = False
                         
             except (json.JSONDecodeError, ValueError, TypeError):
-                # If not JSON, check if content is empty or explicitly states an error
-                # Note: We avoid simple substring matching to prevent false positives
+                # If not JSON, check if content is empty or uses a common error prefix.
+                # Keep this prefix-based so words like "no error" don't count as failures.
                 if not content:
                     is_success = False
-                # Only mark as failure if it explicitly starts with "Error:" or "ERROR:"
-                elif content.strip().lower().startswith("error:"):
+                elif _looks_like_plaintext_tool_error(content):
                     is_success = False
             
             # Update success/failure count

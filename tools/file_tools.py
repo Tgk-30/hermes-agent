@@ -110,10 +110,21 @@ def _check_sensitive_path(filepath: str) -> str | None:
         f"Refusing to write to sensitive system path: {filepath}\n"
         "Use the terminal tool with sudo if you need to modify system files."
     )
+    # macOS temporary files live under /private/var/folders/...; those are
+    # not system files and should remain writable.
+    if (
+        resolved.startswith("/private/var/folders/")
+        or normalized.startswith("/private/var/folders/")
+    ):
+        return None
     for prefix in _SENSITIVE_PATH_PREFIXES:
         if resolved.startswith(prefix) or normalized.startswith(prefix):
             return _err
-    if resolved in _SENSITIVE_EXACT_PATHS or normalized in _SENSITIVE_EXACT_PATHS:
+    if (
+        resolved in _SENSITIVE_EXACT_PATHS
+        or normalized in _SENSITIVE_EXACT_PATHS
+        or resolved == "/private/var/run/docker.sock"
+    ):
         return _err
     return None
 

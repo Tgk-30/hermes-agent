@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _OSV_ENDPOINT = os.getenv("OSV_ENDPOINT", "https://api.osv.dev/v1/query")
 _TIMEOUT = 10  # seconds
+_MAX_RESPONSE_BYTES = 1_000_000
 
 
 def check_package_for_malware(
@@ -46,8 +47,13 @@ def check_package_for_malware(
     try:
         malware = _query_osv(package, ecosystem, version)
     except Exception as exc:
-        # Fail-open: network errors, timeouts, parse failures → allow
-        logger.debug("OSV check failed for %s/%s (allowing): %s", ecosystem, package, exc)
+        # Fail-open: network errors, timeouts, parse failures → allow, but warn.
+        logger.warning(
+            "OSV malware check failed for %s/%s; allowing package to proceed: %s",
+            ecosystem,
+            package,
+            exc,
+        )
         return None
 
     if malware:
@@ -148,7 +154,10 @@ def _query_osv(
     )
 
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-        result = json.loads(resp.read())
+        raw = resp.read(_MAX_RESPONSE_BYTES + 1)
+    if len(raw) > _MAX_RESPONSE_BYTES:
+        raise ValueError(f"OSV response too large ({len(raw)} bytes)")
+    result = json.loads(raw)
 
     vulns = result.get("vulns", [])
     # Only malware advisories — ignore regular CVEs

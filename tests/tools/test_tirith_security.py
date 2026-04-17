@@ -1,6 +1,8 @@
 """Tests for the tirith security scanning subprocess wrapper."""
 
+import io
 import json
+import logging
 import os
 import subprocess
 import time
@@ -642,7 +644,35 @@ class TestBackgroundInstall:
             result = ensure_installed()
             assert result is None  # not available yet
             MockThread.assert_called_once()
+            assert MockThread.call_args.kwargs["daemon"] is True
             mock_thread.start.assert_called_once()
+
+        _tirith_mod._resolved_path = None
+
+    def test_background_install_suppresses_logging_when_root_stream_closed(self):
+        """Daemon install work must not emit into a closed capture stream."""
+        _tirith_mod._resolved_path = None
+
+        root = logging.getLogger()
+        closed_stream = io.StringIO()
+        handler = logging.StreamHandler(closed_stream)
+        root.addHandler(handler)
+        closed_stream.close()
+
+        try:
+            def fake_install(*, log_failures=True):
+                _tirith_mod._install_log(logging.WARNING, "boom")
+                return None, "download_failed"
+
+            with patch("tools.tirith_security._install_tirith",
+                       side_effect=fake_install), \
+                 patch("tools.tirith_security._mark_install_failed") as mock_mark, \
+                 patch("tools.tirith_security.logger.log") as mock_log:
+                _tirith_mod._background_install(log_failures=True)
+                mock_log.assert_not_called()
+                mock_mark.assert_called_once_with("download_failed")
+        finally:
+            root.removeHandler(handler)
 
         _tirith_mod._resolved_path = None
 

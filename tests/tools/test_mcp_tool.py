@@ -4,6 +4,7 @@ All tests use mocks -- no real MCP servers or subprocesses are started.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import threading
@@ -276,6 +277,25 @@ class TestToolHandler:
 
 
 class TestRunOnMCPLoopInterrupts:
+    def test_missing_mcp_loop_closes_unsubmitted_coroutine(self):
+        import tools.mcp_tool as mcp_mod
+
+        async def _never_submitted():
+            await asyncio.sleep(0)
+
+        old_loop = mcp_mod._mcp_loop
+        old_thread = mcp_mod._mcp_thread
+        coro = _never_submitted()
+        mcp_mod._mcp_loop = None
+        mcp_mod._mcp_thread = None
+        try:
+            with pytest.raises(RuntimeError, match="MCP event loop is not running"):
+                mcp_mod._run_on_mcp_loop(coro)
+            assert coro.cr_frame is None
+        finally:
+            mcp_mod._mcp_loop = old_loop
+            mcp_mod._mcp_thread = old_thread
+
     def test_interrupt_cancels_waiting_mcp_call(self):
         import tools.mcp_tool as mcp_mod
         from tools.interrupt import set_interrupt
@@ -318,6 +338,43 @@ class TestRunOnMCPLoopInterrupts:
             assert cancelled.is_set()
         finally:
             set_interrupt(False, waiter_tid)
+            loop.call_soon_threadsafe(loop.stop)
+            thread.join(timeout=2)
+            loop.close()
+            mcp_mod._mcp_loop = old_loop
+            mcp_mod._mcp_thread = old_thread
+
+    def test_timeout_cancels_waiting_mcp_call(self):
+        import tools.mcp_tool as mcp_mod
+
+        loop = asyncio.new_event_loop()
+        thread = threading.Thread(target=loop.run_forever, daemon=True)
+        thread.start()
+
+        cancelled = threading.Event()
+
+        async def _slow_call():
+            try:
+                await asyncio.sleep(5)
+                return "done"
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        old_loop = mcp_mod._mcp_loop
+        old_thread = mcp_mod._mcp_thread
+        mcp_mod._mcp_loop = loop
+        mcp_mod._mcp_thread = thread
+
+        try:
+            with pytest.raises(concurrent.futures.TimeoutError):
+                mcp_mod._run_on_mcp_loop(_slow_call(), timeout=0.05)
+
+            deadline = time.time() + 2
+            while time.time() < deadline and not cancelled.is_set():
+                time.sleep(0.05)
+            assert cancelled.is_set()
+        finally:
             loop.call_soon_threadsafe(loop.stop)
             thread.join(timeout=2)
             loop.close()

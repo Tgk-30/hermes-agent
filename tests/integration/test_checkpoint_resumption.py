@@ -9,13 +9,13 @@ This script simulates batch processing with intentional failures to test:
 
 Usage:
     # Test current implementation
-    python tests/test_checkpoint_resumption.py --test_current
+    python tests/integration/test_checkpoint_resumption.py --test_current
 
     # Test after fix is applied
-    python tests/test_checkpoint_resumption.py --test_fixed
+    python tests/integration/test_checkpoint_resumption.py --test_fixed
 
     # Run full comparison
-    python tests/test_checkpoint_resumption.py --compare
+    python tests/integration/test_checkpoint_resumption.py --compare
 """
 
 import pytest
@@ -25,18 +25,24 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 import traceback
 
 # Add project root to path to import batch_runner
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
-def create_test_dataset(num_prompts: int = 20) -> Path:
+def _resolve_test_workspace(tmp_path: Optional[Path] = None) -> Path:
+    """Use pytest's tmp_path when available, else create a temp workspace."""
+    return tmp_path if tmp_path is not None else Path(tempfile.mkdtemp(prefix="checkpoint-resumption-"))
+
+
+def create_test_dataset(base_dir: Path, num_prompts: int = 20) -> Path:
     """Create a small test dataset for checkpoint testing."""
-    test_data_dir = Path("tests/test_data")
+    test_data_dir = base_dir / "test_data"
     test_data_dir.mkdir(parents=True, exist_ok=True)
     
     dataset_file = test_data_dir / "checkpoint_test_dataset.jsonl"
@@ -118,17 +124,19 @@ def _cleanup_test_artifacts(*paths):
             p.unlink(missing_ok=True)
 
 
-def test_current_implementation():
+def test_current_implementation(tmp_path: Optional[Path] = None):
     """Test the current checkpoint implementation."""
     print("\n" + "=" * 70)
     print("TEST 1: Current Implementation - Checkpoint Timing")
     print("=" * 70)
     print("\n📝 Testing whether checkpoints are saved incrementally during run...")
-    
+
+    workspace = _resolve_test_workspace(tmp_path)
+
     # Setup
-    dataset_file = create_test_dataset(num_prompts=12)
+    dataset_file = create_test_dataset(workspace, num_prompts=12)
     run_name = "checkpoint_test_current"
-    output_dir = Path("data") / run_name
+    output_dir = workspace / "data" / run_name
     
     # Clean up any existing test data
     if output_dir.exists():
@@ -181,7 +189,7 @@ def test_current_implementation():
         traceback.print_exc()
         return False
     finally:
-        _cleanup_test_artifacts(dataset_file, output_dir)
+        _cleanup_test_artifacts(workspace)
     
     elapsed = time.time() - start_time
     
@@ -213,17 +221,19 @@ def test_current_implementation():
         return True
 
 
-def test_interruption_and_resume():
+def test_interruption_and_resume(tmp_path: Optional[Path] = None):
     """Test that resume actually works after interruption."""
     print("\n" + "=" * 70)
     print("TEST 2: Interruption and Resume")
     print("=" * 70)
     print("\n📝 Testing whether resume works after manual interruption...")
-    
+
+    workspace = _resolve_test_workspace(tmp_path)
+
     # Setup
-    dataset_file = create_test_dataset(num_prompts=15)
+    dataset_file = create_test_dataset(workspace, num_prompts=15)
     run_name = "checkpoint_test_resume"
-    output_dir = Path("data") / run_name
+    output_dir = workspace / "data" / run_name
     
     # Clean up any existing test data
     if output_dir.exists():
@@ -235,7 +245,7 @@ def test_interruption_and_resume():
     
     print(f"\n▶️  Starting first run (will process 5 prompts, then simulate interruption)...")
     
-    temp_dataset = Path("tests/test_data/checkpoint_test_resume_partial.jsonl")
+    temp_dataset = workspace / "checkpoint_test_resume_partial.jsonl"
     try:
         # Create a modified dataset with only first 5 prompts for initial run
         with open(dataset_file, 'r') as f:
@@ -308,7 +318,7 @@ def test_interruption_and_resume():
         traceback.print_exc()
         return False
     finally:
-        _cleanup_test_artifacts(dataset_file, temp_dataset, output_dir)
+        _cleanup_test_artifacts(workspace)
 
 
 def test_simulated_crash():

@@ -5,11 +5,11 @@ terminates processes, and handles edge cases on failure paths.
 Inspired by PR #715 (0xbyt4).
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tools.rl_training_tool import RunState, _stop_training_run
+from tools.rl_training_tool import RunState, _stop_training_run, _wait_for_local_port
 
 
 def _make_run_state(**overrides) -> RunState:
@@ -140,3 +140,58 @@ class TestStopTrainingRunStatus:
         state = _make_run_state()
         _stop_training_run(state)  # should not raise
         assert state.status == "pending"
+
+
+class TestWaitForLocalPort:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_connection_succeeds(self, monkeypatch):
+        process = MagicMock()
+        process.poll.return_value = None
+        writer = MagicMock()
+        writer.wait_closed = AsyncMock()
+
+        async def fake_open_connection(host, port):
+            assert host == "127.0.0.1"
+            assert port == 8001
+            return MagicMock(), writer
+
+        monkeypatch.setattr("tools.rl_training_tool.asyncio.open_connection", fake_open_connection)
+
+        error = await _wait_for_local_port(
+            process,
+            port=8001,
+            service_name="trainer inference server",
+            timeout=1.0,
+            initial_delay=0.01,
+            max_delay=0.01,
+        )
+
+        assert error is None
+        writer.close.assert_called_once()
+        writer.wait_closed.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reports_process_exit_before_port_is_ready(self, monkeypatch):
+        process = MagicMock()
+        process.returncode = 17
+        process.poll.side_effect = [None, 17]
+
+        async def fake_open_connection(host, port):
+            raise OSError("connection refused")
+
+        async def fake_sleep(_delay):
+            return None
+
+        monkeypatch.setattr("tools.rl_training_tool.asyncio.open_connection", fake_open_connection)
+        monkeypatch.setattr("tools.rl_training_tool.asyncio.sleep", fake_sleep)
+
+        error = await _wait_for_local_port(
+            process,
+            port=8000,
+            service_name="Atropos API server",
+            timeout=1.0,
+            initial_delay=0.01,
+            max_delay=0.01,
+        )
+
+        assert error == "Atropos API server exited with code 17 before port 8000 became ready"

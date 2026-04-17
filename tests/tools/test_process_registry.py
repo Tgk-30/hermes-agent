@@ -102,6 +102,19 @@ class TestGetAndPoll:
         assert result["status"] == "exited"
         assert result["exit_code"] == 0
 
+    def test_detached_poll_note_only_returned_once(self, registry):
+        s = _make_session(sid="proc_detached", output="detached output")
+        s.detached = True
+        registry._running[s.id] = s
+
+        first = registry.poll(s.id)
+        second = registry.poll(s.id)
+
+        assert first["detached"] is True
+        assert first["note"] == "Process recovered after restart -- output history unavailable"
+        assert second["detached"] is True
+        assert "note" not in second
+
 
 # =========================================================================
 # Read log

@@ -360,6 +360,17 @@ class TestDeleteSkill:
         assert result["success"] is True
         assert not (tmp_path / "my-skill").exists()
 
+    def test_delete_returns_structured_error_when_rmtree_fails(self, tmp_path):
+        with _skill_dir(tmp_path):
+            _create_skill("my-skill", VALID_SKILL_CONTENT)
+            with patch("tools.skill_manager_tool.shutil.rmtree", side_effect=PermissionError("denied")):
+                result = _delete_skill("my-skill")
+
+        assert result["success"] is False
+        assert "Failed to delete skill 'my-skill'" in result["error"]
+        assert "denied" in result["error"]
+        assert (tmp_path / "my-skill").exists()
+
     def test_delete_nonexistent(self, tmp_path):
         with _skill_dir(tmp_path):
             result = _delete_skill("nonexistent")

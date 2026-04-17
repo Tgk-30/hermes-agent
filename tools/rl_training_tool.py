@@ -64,6 +64,43 @@ def _ensure_logs_dir():
     if TINKER_ATROPOS_ROOT.exists():
         LOGS_DIR.mkdir(exist_ok=True)
 
+
+async def _wait_for_local_port(
+    process: Optional[subprocess.Popen],
+    *,
+    port: int,
+    service_name: str,
+    host: str = "127.0.0.1",
+    timeout: float = 30.0,
+    initial_delay: float = 0.5,
+    max_delay: float = 5.0,
+) -> Optional[str]:
+    """Wait until a local TCP port accepts connections or the process exits."""
+    deadline = time.monotonic() + timeout
+    delay = max(initial_delay, 0.01)
+
+    while time.monotonic() < deadline:
+        if process is not None and process.poll() is not None:
+            return f"{service_name} exited with code {process.returncode} before port {port} became ready"
+
+        try:
+            _reader, writer = await asyncio.open_connection(host, port)
+        except OSError:
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, max_delay)
+            continue
+
+        try:
+            writer.close()
+            wait_closed = getattr(writer, "wait_closed", None)
+            if callable(wait_closed):
+                await wait_closed()
+        except Exception:
+            pass
+        return None
+
+    return f"{service_name} did not become ready on port {port} within {int(timeout)}s"
+
 # ============================================================================
 # Locked Configuration (Infrastructure Settings)
 # ============================================================================
@@ -342,15 +379,19 @@ async def _spawn_training_run(run_state: RunState, config_path: Path):
             cwd=str(TINKER_ATROPOS_ROOT),
         )
         
-        # Wait for API to start
-        await asyncio.sleep(5)
-        
-        if run_state.api_process.poll() is not None:
+        logger.info("[%s] Waiting for Atropos API server on port 8000...", run_id)
+        api_ready_error = await _wait_for_local_port(
+            run_state.api_process,
+            port=8000,
+            service_name="Atropos API server",
+            timeout=30.0,
+        )
+        if api_ready_error:
             run_state.status = "failed"
-            run_state.error_message = f"API server exited with code {run_state.api_process.returncode}. Check {api_log}"
+            run_state.error_message = f"{api_ready_error}. Check {api_log}"
             _stop_training_run(run_state)
             return
-        
+
         logger.info("[%s] Atropos API server started", run_id)
         
         # Step 2: Start the Tinker trainer
@@ -366,21 +407,21 @@ async def _spawn_training_run(run_state: RunState, config_path: Path):
             env={**os.environ, "TINKER_API_KEY": os.getenv("TINKER_API_KEY", "")},
         )
         
-        # Wait for trainer to initialize (it starts FastAPI inference server on 8001)
-        logger.info("[%s] Waiting 30 seconds for trainer to initialize...", run_id)
-        await asyncio.sleep(30)
-        
-        if run_state.trainer_process.poll() is not None:
+        # Wait for trainer inference server to accept connections on port 8001
+        logger.info("[%s] Waiting for trainer inference server on port 8001...", run_id)
+        trainer_ready_error = await _wait_for_local_port(
+            run_state.trainer_process,
+            port=8001,
+            service_name="Trainer inference server",
+            timeout=120.0,
+        )
+        if trainer_ready_error:
             run_state.status = "failed"
-            run_state.error_message = f"Trainer exited with code {run_state.trainer_process.returncode}. Check {trainer_log}"
+            run_state.error_message = f"{trainer_ready_error}. Check {trainer_log}"
             _stop_training_run(run_state)
             return
-        
+
         logger.info("[%s] Trainer started, inference server on port 8001", run_id)
-        
-        # Step 3: Start the environment
-        logger.info("[%s] Waiting 90 more seconds before starting environment...", run_id)
-        await asyncio.sleep(90)
         
         # Find the environment file
         env_info = None

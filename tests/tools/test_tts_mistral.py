@@ -8,7 +8,14 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for key in ("MISTRAL_API_KEY", "HERMES_SESSION_PLATFORM"):
+    for key in (
+        "MISTRAL_API_KEY",
+        "HERMES_SESSION_PLATFORM",
+        "ELEVENLABS_API_KEY",
+        "OPENAI_API_KEY",
+        "VOICE_TOOLS_OPENAI_KEY",
+        "MINIMAX_API_KEY",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
