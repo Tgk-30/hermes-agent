@@ -221,12 +221,29 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
                             pass
                     current_cmd = ""
         else:
-            result = subprocess.run(
+            ps_commands = [
                 ["ps", "-A", "eww", "-o", "pid=,command="],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            ]
+            if sys.platform == "darwin":
+                # macOS ps does not support the Linux/BSD-ish "eww" flag
+                # combination. Use a portable wide-enough command listing so
+                # gateway status/cron checks can see launchd-managed processes.
+                ps_commands.insert(0, ["ps", "-axo", "pid=,command="])
+
+            result = None
+            for ps_command in ps_commands:
+                candidate = subprocess.run(
+                    ps_command,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if candidate.returncode == 0:
+                    result = candidate
+                    break
+            if result is None:
+                return pids
+
             for line in result.stdout.split('\n'):
                 stripped = line.strip()
                 if not stripped or 'grep' in stripped:
