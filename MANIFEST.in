@@ -1,4 +1,5 @@
 graft skills
 graft optional-skills
+include plugins/memory/localhybrid/plugin.yaml
 global-exclude __pycache__
 global-exclude *.py[cod]

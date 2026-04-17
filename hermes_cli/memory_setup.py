@@ -51,6 +51,65 @@ def _prompt(label: str, default: str | None = None, secret: bool = False) -> str
     return val or (default or "")
 
 
+def _load_plugin_manifest(yaml_path: Path, provider_name: str) -> dict | None:
+    """Load a provider plugin manifest and surface parse failures to the user."""
+    try:
+        import yaml
+
+        with open(yaml_path, encoding="utf-8") as f:
+            meta = yaml.safe_load(f) or {}
+    except Exception as exc:
+        print(f"\n  ⚠ Failed to parse {yaml_path.name} for '{provider_name}': {exc}")
+        return None
+
+    if not isinstance(meta, dict):
+        print(
+            f"\n  ⚠ Failed to parse {yaml_path.name} for '{provider_name}': "
+            "expected a mapping at the top level"
+        )
+        return None
+
+    return meta
+
+
+def _check_external_dependency(dep_name: str, check_cmd: str, install_cmd: str) -> None:
+    """Run an external dependency probe without invoking a shell."""
+    import shlex
+    import subprocess
+
+    try:
+        check_args = shlex.split(check_cmd)
+    except ValueError as exc:
+        print(f"\n  ⚠ Could not parse dependency check for '{dep_name}': {exc}")
+        if install_cmd:
+            print("  Install with:")
+            print(f"    {install_cmd}")
+        return
+
+    if not check_args:
+        print(f"\n  ⚠ Dependency check for '{dep_name}' is empty")
+        if install_cmd:
+            print("  Install with:")
+            print(f"    {install_cmd}")
+        return
+
+    try:
+        subprocess.run(check_args, capture_output=True, timeout=5, check=True)
+    except subprocess.TimeoutExpired:
+        print(f"\n  ⚠ '{dep_name}' check timed out after 5s. Verify it manually.")
+        if install_cmd:
+            print("  Install with:")
+            print(f"    {install_cmd}")
+    except FileNotFoundError:
+        print(f"\n  ⚠ '{dep_name}' not found. Install with:")
+        if install_cmd:
+            print(f"    {install_cmd}")
+    except (subprocess.CalledProcessError, OSError):
+        print(f"\n  ⚠ '{dep_name}' check failed. Verify or install it with:")
+        if install_cmd:
+            print(f"    {install_cmd}")
+
+
 # ---------------------------------------------------------------------------
 # Provider discovery
 # ---------------------------------------------------------------------------
@@ -67,16 +126,11 @@ def _install_dependencies(provider_name: str) -> None:
     if not yaml_path.exists():
         return
 
-    try:
-        import yaml
-        with open(yaml_path) as f:
-            meta = yaml.safe_load(f) or {}
-    except Exception:
+    meta = _load_plugin_manifest(yaml_path, provider_name)
+    if meta is None:
         return
 
     pip_deps = meta.get("pip_dependencies", [])
-    if not pip_deps:
-        return
 
     # pip name → import name mapping for packages where they differ
     _IMPORT_NAMES = {
@@ -86,44 +140,45 @@ def _install_dependencies(provider_name: str) -> None:
         "hindsight-all": "hindsight",
     }
 
-    # Check which packages are missing
-    missing = []
-    for dep in pip_deps:
-        import_name = _IMPORT_NAMES.get(dep, dep.replace("-", "_").split("[")[0])
-        try:
-            __import__(import_name)
-        except ImportError:
-            missing.append(dep)
+    if pip_deps:
+        # Check which packages are missing
+        missing = []
+        for dep in pip_deps:
+            import_name = _IMPORT_NAMES.get(dep, dep.replace("-", "_").split("[")[0])
+            try:
+                __import__(import_name)
+            except ImportError:
+                missing.append(dep)
 
-    if not missing:
-        return
+        if missing:
+            print(f"\n  Installing dependencies: {', '.join(missing)}")
 
-    print(f"\n  Installing dependencies: {', '.join(missing)}")
+            import shutil
 
-    import shutil
-    uv_path = shutil.which("uv")
-    if not uv_path:
-        print(f"  ⚠ uv not found — cannot install dependencies")
-        print(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
-        print(f"  Then re-run: hermes memory setup")
-        return
+            uv_path = shutil.which("uv")
+            if not uv_path:
+                print(f"  ⚠ uv not found — cannot install dependencies")
+                print(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
+                print(f"  Then re-run: hermes memory setup")
+                return
 
-    try:
-        subprocess.run(
-            [uv_path, "pip", "install", "--python", sys.executable, "--quiet"] + missing,
-            check=True, timeout=120,
-            capture_output=True,
-        )
-        print(f"  ✓ Installed {', '.join(missing)}")
-    except subprocess.CalledProcessError as e:
-        print(f"  ⚠ Failed to install {', '.join(missing)}")
-        stderr = (e.stderr or b"").decode()[:200]
-        if stderr:
-            print(f"    {stderr}")
-        print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
-    except Exception as e:
-        print(f"  ⚠ Install failed: {e}")
-        print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
+            try:
+                subprocess.run(
+                    [uv_path, "pip", "install", "--python", sys.executable, "--quiet"] + missing,
+                    check=True,
+                    timeout=120,
+                    capture_output=True,
+                )
+                print(f"  ✓ Installed {', '.join(missing)}")
+            except subprocess.CalledProcessError as e:
+                print(f"  ⚠ Failed to install {', '.join(missing)}")
+                stderr = (e.stderr or b"").decode()[:200]
+                if stderr:
+                    print(f"    {stderr}")
+                print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
+            except Exception as e:
+                print(f"  ⚠ Install failed: {e}")
+                print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
 
     # Also show external dependencies (non-pip) if any
     ext_deps = meta.get("external_dependencies", [])
@@ -132,14 +187,7 @@ def _install_dependencies(provider_name: str) -> None:
         check_cmd = dep.get("check", "")
         install_cmd = dep.get("install", "")
         if check_cmd:
-            try:
-                subprocess.run(
-                    check_cmd, shell=True, capture_output=True, timeout=5
-                )
-            except Exception:
-                if install_cmd:
-                    print(f"\n  ⚠ '{dep_name}' not found. Install with:")
-                    print(f"    {install_cmd}")
+            _check_external_dependency(dep_name or check_cmd, check_cmd, install_cmd)
 
 
 def _get_available_providers() -> list:
@@ -398,6 +446,15 @@ def cmd_status(args) -> None:
 
     if provider_name:
         provider_config = mem_config.get(provider_name, {})
+        if provider_name == "localhybrid":
+            native_config_path = get_hermes_home() / "memory" / "localhybrid.json"
+            if native_config_path.exists():
+                try:
+                    from plugins.memory.localhybrid import _load_localhybrid_config
+
+                    provider_config = _load_localhybrid_config(str(get_hermes_home()))
+                except Exception:
+                    pass
         if provider_config:
             print(f"\n  {provider_name} config:")
             for key, val in provider_config.items():

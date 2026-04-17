@@ -23,8 +23,6 @@ import json
 import logging
 import os
 import threading
-
-from hermes_constants import get_hermes_home
 from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider
